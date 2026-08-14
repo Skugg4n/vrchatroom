@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PRATRUMMET – VR-chattrum</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#111; font-family:'Segoe UI', Arial, sans-serif; }
+  canvas { display:block; }
+  #ui { position:fixed; inset:0; z-index:10; pointer-events:none; }
+  .screen { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:linear-gradient(160deg,#1b2340,#2c1b40); color:#fff; pointer-events:auto; overflow-y:auto; padding:20px;
+    animation:fadeIn .3s ease; }
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  .hidden { display:none !important; }
+  h1 { font-size:min(11vw,56px); letter-spacing:4px; margin-bottom:6px; text-shadow:0 4px 20px #7b5cff88; }
+  .subtitle { opacity:.8; margin-bottom:30px; font-size:16px; }
+  .btn { pointer-events:auto; background:#7b5cff; color:#fff; border:none; border-radius:14px; padding:16px 30px;
+    font-size:20px; font-weight:bold; cursor:pointer; margin:8px; letter-spacing:1px; box-shadow:0 6px 0 #5336c9;
+    transition:transform .08s ease, box-shadow .08s ease, background .15s ease; }
+  .btn:hover { background:#8b6fff; }
+  .btn:active { transform:translateY(4px); box-shadow:0 2px 0 #5336c9; }
+  .btn.secondary { background:#3a4266; box-shadow:0 6px 0 #262c47; }
+  .btn.secondary:hover { background:#465080; }
+  .btn.small { padding:8px 14px; font-size:15px; box-shadow:0 4px 0 #5336c9; margin:4px; }
+  .btn.small.secondary { box-shadow:0 4px 0 #262c47; }
+  .row { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:6px; margin:6px 0; }
+  .optlabel { width:110px; text-align:right; opacity:.85; font-size:15px; padding-right:8px; }
+  .swatch { width:34px; height:34px; border-radius:50%; border:3px solid transparent; cursor:pointer; pointer-events:auto; }
+  .swatch.sel { border-color:#fff; }
+  .pill { background:#3a4266; border:none; color:#fff; border-radius:999px; padding:8px 16px; font-size:15px;
+    cursor:pointer; pointer-events:auto; }
+  .pill.sel { background:#7b5cff; }
+  input[type=text] { pointer-events:auto; font-size:20px; padding:12px 16px; border-radius:12px; border:none; outline:none;
+    background:#ffffffee; color:#222; text-align:center; letter-spacing:2px; }
+  #previewWrap { background:#ffffff12; border-radius:18px; padding:8px; margin-bottom:10px; }
+  .worldCard { pointer-events:auto; width:170px; padding:16px; border-radius:16px; background:#3a4266; cursor:pointer;
+    text-align:center; border:3px solid transparent; transition:transform .15s ease, border-color .15s ease; }
+  .worldCard:hover { border-color:#7b5cff; transform:translateY(-3px); }
+  .worldCard .emoji { font-size:44px; }
+  .err { color:#ff8f8f; min-height:22px; margin-top:10px; font-size:15px; }
+  /* HUD i platt läge */
+  #hud { position:absolute; inset:0; pointer-events:none; }
+  #topBar { position:absolute; top:10px; left:10px; background:#000000aa; color:#fff; padding:8px 14px; border-radius:12px;
+    font-size:15px; line-height:1.5; pointer-events:none; }
+  #worldBar { position:absolute; top:10px; right:10px; display:flex; gap:4px; }
+  #vrBtn { position:absolute; right:12px; bottom:110px; }
+  #chatBox { position:absolute; left:10px; bottom:10px; width:min(420px, 78vw); pointer-events:none; }
+  #chatLog { max-height:150px; overflow-y:auto; font-size:14px; color:#fff; text-shadow:0 1px 3px #000;
+    margin-bottom:6px; pointer-events:auto; }
+  #chatLog div { background:#00000066; border-radius:8px; padding:3px 8px; margin-top:3px; width:fit-content; max-width:100%; word-wrap:break-word; }
+  #chatRow { display:flex; gap:6px; pointer-events:auto; }
+  #chatInput { flex:1; font-size:16px; padding:10px 12px; border-radius:10px; border:none; background:#ffffffdd; text-align:left; letter-spacing:0; }
+  #toast { position:absolute; top:60px; left:50%; transform:translateX(-50%); background:#7b5cffdd; color:#fff;
+    padding:10px 20px; border-radius:12px; font-size:16px; opacity:0; transition:opacity .3s; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="ui">
+
+  <!-- STARTSKÄRM -->
+  <div id="startScreen" class="screen">
+    <h1>PRATRUMMET</h1>
+    <div class="subtitle">Häng med kompisar i VR, på datorn eller mobilen</div>
+    <button class="btn" id="btnHost">SKAPA RUM</button>
+    <button class="btn secondary" id="btnJoin">GÅ MED I RUM</button>
+    <div id="verTag" style="position:absolute;bottom:12px;right:16px;opacity:.45;font-size:13px;"></div>
+  </div>
+
+  <!-- KARAKTÄRSSKAPARE -->
+  <div id="createScreen" class="screen hidden">
+    <h2 style="margin-bottom:10px;">Skapa din karaktär</h2>
+    <div id="previewWrap"><canvas id="previewCanvas" width="220" height="240"></canvas><div style="text-align:center;font-size:13px;opacity:.7;">Dra för att snurra</div></div>
+    <div class="row"><span class="optlabel">Färg</span><span id="colorRow" class="row"></span></div>
+    <div class="row"><span class="optlabel">Huvud</span><span id="headRow" class="row"></span></div>
+    <div class="row"><span class="optlabel">Ögon</span><span id="eyeRow" class="row"></span></div>
+    <div class="row"><span class="optlabel">Hatt</span><span id="hatRow" class="row"></span></div>
+    <div class="row"><span class="optlabel">Accessoar</span><span id="accRow" class="row"></span></div>
+    <div class="row" style="margin-top:8px;"><input type="text" id="nameInput" maxlength="12" placeholder="Ditt namn"></div>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn secondary" id="btnBackFromCreate">TILLBAKA</button>
+      <button class="btn" id="btnDoneCreate">KLAR</button>
+    </div>
+  </div>
+
+  <!-- VÄRLDSVAL (värd) -->
+  <div id="worldScreen" class="screen hidden">
+    <h2 style="margin-bottom:20px;">Välj värld</h2>
+    <div class="row">
+      <div class="worldCard" data-world="vit"><div class="emoji">⬜</div><b>Vita rummet</b><div style="opacity:.7;font-size:13px;">Helt vitt, oändligt</div></div>
+      <div class="worldCard" data-world="rum"><div class="emoji">🛋️</div><b>Stökiga rummet</b><div style="opacity:.7;font-size:13px;">Prylar överallt</div></div>
+      <div class="worldCard" data-world="park"><div class="emoji">🌳</div><b>Parken</b><div style="opacity:.7;font-size:13px;">Träd, blommor, damm</div></div>
+    </div>
+    <div style="opacity:.7; font-size:14px; margin-top:16px;">Du kan byta värld när som helst medan ni chattar</div>
+    <button class="btn secondary" id="btnBackFromWorld" style="margin-top:14px;">TILLBAKA</button>
+  </div>
+
+  <!-- GÅ MED -->
+  <div id="joinScreen" class="screen hidden">
+    <h2 style="margin-bottom:14px;">Gå med i rum</h2>
+    <input type="text" id="codeInput" maxlength="4" placeholder="KOD" style="text-transform:lowercase; width:180px;">
+    <div class="err" id="joinErr"></div>
+    <div class="row" style="margin-top:10px;">
+      <button class="btn secondary" id="btnBackFromJoin">TILLBAKA</button>
+      <button class="btn" id="btnConnect">ANSLUT</button>
+    </div>
+  </div>
+
+  <!-- HUD i världen (platt läge) -->
+  <div id="hud" class="hidden">
+    <div id="topBar"></div>
+    <div id="worldBar" class="hidden">
+      <button class="btn small secondary" data-world="vit">⬜ Vit</button>
+      <button class="btn small secondary" data-world="rum">🛋️ Rum</button>
+      <button class="btn small secondary" data-world="park">🌳 Park</button>
+    </div>
+    <button class="btn hidden" id="vrBtn">STARTA I VR 🥽</button>
+    <div id="chatBox">
+      <div id="chatLog"></div>
+      <div id="emoteRow" style="display:flex;gap:4px;margin-bottom:6px;pointer-events:auto;">
+        <button class="btn small secondary" data-emote="vinka">👋</button>
+        <button class="btn small secondary" data-emote="hjarta">❤️</button>
+        <button class="btn small secondary" data-emote="skratt">😂</button>
+        <button class="btn small secondary" data-emote="fest">🎉</button>
+        <button class="btn small secondary" data-emote="dansa">💃</button>
+      </div>
+      <div id="chatRow">
+        <input type="text" id="chatInput" maxlength="80" placeholder="Skriv något...">
+        <button class="btn small" id="btnSend">Skicka</button>
+      </div>
+    </div>
+    <div id="toast"></div>
+  </div>
+
+</div>
+<script>
+"use strict";
+/* ============================================================
+   PRATRUMMET – VR-chattrum med anpassade karaktärer
+   En HTML-fil. Three.js r128 + PeerJS. Platt + WebXR (Quest).
+   ============================================================ */
+
+/* ---------- Hjälpfunktioner ---------- */
+const VERSION='1.4';
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;}}
+function $(id){return document.getElementById(id);}
+function show(id){$(id).classList.remove('hidden');}
+function hide(id){$(id).classList.add('hidden');}
+function toast(msg){const t=$('toast');t.textContent=msg;t.style.opacity=1;clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity=0,2500);}
+function randCode(){const c='abcdefghjkmnpqrstuvwxyz23456789';let s='';for(let i=0;i<4;i++)s+=c[Math.floor(Math.random()*c.length)];return s;}
+addEventListener('error',e=>{ try{toast('Fel: '+e.message);}catch(_){} });
+function escapeHtml(s){return s.replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));}
+
+/* ---------- Ljud (WebAudio, inga filer) ---------- */
+let actx=null;
+function audio(){if(!actx){try{actx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){}}return actx;}
+function beep(freq,dur,type,vol,slide){
+  const a=audio(); if(!a) return;
+  const o=a.createOscillator(), g=a.createGain();
+  o.type=type||'sine'; o.frequency.setValueAtTime(freq,a.currentTime);
+  if(slide) o.frequency.exponentialRampToValueAtTime(slide,a.currentTime+dur);
+  g.gain.setValueAtTime(vol||0.15,a.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001,a.currentTime+dur);
+  o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime+dur);
+}
+const sndJoin =()=>{beep(440,.12,'triangle',.15,880);setTimeout(()=>beep(660,.15,'triangle',.12,1320),90);};
+const sndLeave=()=>{beep(660,.15,'triangle',.12,330);};
+const sndChat =()=>{beep(880,.06,'sine',.08);};
+const sndWorld=()=>{beep(220,.4,'sawtooth',.06,660);};
+
+/* ---------- Karaktärskonfiguration ---------- */
+const COLORS=[0xe74c3c,0xe67e22,0xf1c40f,0x2ecc71,0x1abc9c,0x3498db,0x9b59b6,0xfd79a8,0x95a5a6,0x6c5ce7];
+const HEADS=[['rund','Rund'],['kub','Kub'],['agg','Ägg']];
+const EYES=[['prickar','Prickar'],['stora','Stora'],['somniga','Sömniga'],['coola','Coola']];
+const HATS=[['ingen','Ingen'],['keps','Keps'],['hog','Hög hatt'],['luva','Toppluva'],['krona','Krona']];
+const ACCS=[['ingen','Ingen'],['ryggsack','Ryggsäck'],['slips','Slips'],['halsduk','Halsduk']];
+let myCfg={color:3, head:'rund', eyes:'stora', hat:'ingen', acc:'ingen', name:''};
+
+/* Procedurell avatar. Returnerar Group med userData-referenser för animation. */
+function makeAvatar(cfg){
+  const g=new THREE.Group();
+  const col=COLORS[cfg.color%COLORS.length];
+  const bodyMat=new THREE.MeshLambertMaterial({color:col});
+  const darkMat=new THREE.MeshLambertMaterial({color:0x222222});
+  const whiteMat=new THREE.MeshLambertMaterial({color:0xffffff});
+
+  // Ben (pivotpunkter vid höften)
+  function limb(px,py,w,l,mat){
+    const p=new THREE.Group(); p.position.set(px,py,0);
+    const m=new THREE.Mesh(new THREE.BoxGeometry(w,l,w),mat);
+    m.position.y=-l/2; p.add(m); g.add(p); return p;
+  }
+  const lLeg=limb(-0.11,0.5,0.14,0.5,bodyMat);
+  const rLeg=limb( 0.11,0.5,0.14,0.5,bodyMat);
+  // Kropp
+  const body=new THREE.Mesh(new THREE.BoxGeometry(0.44,0.62,0.28),bodyMat);
+  body.position.y=0.82; g.add(body);
+  // Armar
+  const lArm=limb(-0.29,1.06,0.11,0.48,bodyMat);
+  const rArm=limb( 0.29,1.06,0.11,0.48,bodyMat);
+
+  // Huvud i egen grupp, så att andra ser vart man tittar (upp/ned)
+  const headG=new THREE.Group();
+  let head, hy, headTop;
+  if(cfg.head==='kub'){ head=new THREE.Mesh(new THREE.BoxGeometry(0.42,0.4,0.42),bodyMat); hy=1.42; headTop=0.2; }
+  else if(cfg.head==='agg'){ head=new THREE.Mesh(new THREE.SphereGeometry(0.22,14,12),bodyMat); head.scale.y=1.35; hy=1.5; headTop=0.3; }
+  else { head=new THREE.Mesh(new THREE.SphereGeometry(0.25,14,12),bodyMat); hy=1.45; headTop=0.25; }
+  headG.position.y=hy; headG.add(head); g.add(headG);
+  const fz=(cfg.head==='kub')?0.22:0.2;
+
+  // Ögon (allt sitter i huvudgruppen)
+  function eye(x,geo,mat,z,dy){const e=new THREE.Mesh(geo,mat);e.position.set(x,(dy===undefined?0.04:dy),z||fz);headG.add(e);return e;}
+  if(cfg.eyes==='prickar'){
+    eye(-0.08,new THREE.SphereGeometry(0.03,8,8),darkMat); eye(0.08,new THREE.SphereGeometry(0.03,8,8),darkMat);
+  } else if(cfg.eyes==='stora'){
+    eye(-0.09,new THREE.SphereGeometry(0.07,10,10),whiteMat); eye(0.09,new THREE.SphereGeometry(0.07,10,10),whiteMat);
+    eye(-0.09,new THREE.SphereGeometry(0.035,8,8),darkMat,fz+0.05); eye(0.09,new THREE.SphereGeometry(0.035,8,8),darkMat,fz+0.05);
+  } else if(cfg.eyes==='somniga'){
+    eye(-0.08,new THREE.BoxGeometry(0.09,0.02,0.02),darkMat); eye(0.08,new THREE.BoxGeometry(0.09,0.02,0.02),darkMat);
+  } else { // coola solglasögon
+    const sg=new THREE.Mesh(new THREE.BoxGeometry(0.32,0.08,0.05),darkMat); sg.position.set(0,0.05,fz); headG.add(sg);
+  }
+
+  // Hatt (sitter i huvudgruppen)
+  if(cfg.hat==='keps'){
+    const c=new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.19,0.12,12),new THREE.MeshLambertMaterial({color:0x2255aa}));
+    c.position.y=headTop; headG.add(c);
+    const brim=new THREE.Mesh(new THREE.BoxGeometry(0.22,0.03,0.16),c.material);
+    brim.position.set(0,headTop-0.04,0.22); headG.add(brim);
+  } else if(cfg.hat==='hog'){
+    const m=new THREE.MeshLambertMaterial({color:0x1a1a1a});
+    const t=new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,0.32,12),m); t.position.y=headTop+0.15; headG.add(t);
+    const b=new THREE.Mesh(new THREE.CylinderGeometry(0.24,0.24,0.03,14),m); b.position.y=headTop; headG.add(b);
+  } else if(cfg.hat==='luva'){
+    const m=new THREE.MeshLambertMaterial({color:0xcc3344});
+    const c=new THREE.Mesh(new THREE.ConeGeometry(0.2,0.3,12),m); c.position.y=headTop+0.1; c.rotation.z=0.25; headG.add(c);
+    const p=new THREE.Mesh(new THREE.SphereGeometry(0.06,8,8),whiteMat); p.position.set(-0.07,headTop+0.26,0); headG.add(p);
+  } else if(cfg.hat==='krona'){
+    const m=new THREE.MeshLambertMaterial({color:0xf5c518,emissive:0x554400});
+    const c=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.16,0.1,10),m); c.position.y=headTop; headG.add(c);
+    for(let i=0;i<4;i++){const s=new THREE.Mesh(new THREE.ConeGeometry(0.035,0.09,6),m);
+      s.position.set(Math.cos(i*Math.PI/2)*0.14,headTop+0.09,Math.sin(i*Math.PI/2)*0.14); headG.add(s);}
+  }
+
+  // Accessoar
+  if(cfg.acc==='ryggsack'){
+    const b=new THREE.Mesh(new THREE.BoxGeometry(0.32,0.4,0.14),new THREE.MeshLambertMaterial({color:0x2d6a4f}));
+    b.position.set(0,0.88,-0.22); g.add(b);
+  } else if(cfg.acc==='slips'){
+    const m=new THREE.MeshLambertMaterial({color:0xaa1122});
+    const k=new THREE.Mesh(new THREE.BoxGeometry(0.09,0.3,0.03),m); k.position.set(0,0.95,0.16); g.add(k);
+  } else if(cfg.acc==='halsduk'){
+    const m=new THREE.MeshLambertMaterial({color:0xff8800});
+    const h=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.2,0.1,10),m); h.position.y=1.18; g.add(h);
+    const s=new THREE.Mesh(new THREE.BoxGeometry(0.1,0.3,0.04),m); s.position.set(0.1,1.0,0.16); g.add(s);
+  }
+
+  g.userData={lArm,rArm,lLeg,rLeg,body,headG,hy,phase:Math.random()*6};
+  return g;
+}
+
+/* ---------- Textsprites (namnskyltar + pratbubblor) ---------- */
+function makeTextSprite(text,opts){
+  opts=opts||{};
+  const cv=document.createElement('canvas'); const ctx=cv.getContext('2d');
+  const fs=opts.fontSize||44; ctx.font='bold '+fs+'px sans-serif';
+  const w=Math.min(900,Math.ceil(ctx.measureText(text).width)+50), h=fs+36;
+  cv.width=w; cv.height=h;
+  ctx.font='bold '+fs+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  // rundad bakgrund
+  ctx.fillStyle=opts.bg||'rgba(0,0,0,0.55)';
+  const r=h/2;
+  ctx.beginPath();
+  ctx.moveTo(r,0); ctx.lineTo(w-r,0); ctx.arc(w-r,r,r,-Math.PI/2,Math.PI/2);
+  ctx.lineTo(r,h); ctx.arc(r,r,r,Math.PI/2,-Math.PI/2); ctx.fill();
+  ctx.fillStyle=opts.color||'#fff';
+  ctx.fillText(text,w/2,h/2+2);
+  const tex=new THREE.CanvasTexture(cv);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:!opts.onTop,transparent:true}));
+  const scale=opts.scale||0.005;
+  sp.scale.set(w*scale,h*scale,1);
+  return sp;
+}
+
+/* ---------- Scen, renderer, dolly ---------- */
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,0.05,200);
+camera.rotation.order='YXZ';
+const renderer=new THREE.WebGLRenderer({antialias:false});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.setSize(innerWidth,innerHeight);
+renderer.xr.enabled=true;
+renderer.xr.setReferenceSpaceType('local-floor');
+document.body.appendChild(renderer.domElement);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+
+// Dolly-rigg: kameran ligger i en Group. VR flyttar dollyn, headsetet styr kameran.
+const dolly=new THREE.Group();
+dolly.add(camera);
+scene.add(dolly);
+camera.position.set(0,1.6,0); // platt läge
+
+// Konstant ljusuppsättning (antalet ljus ändras aldrig = inga shaderomkompileringar)
+const hemi=new THREE.HemisphereLight(0xffffff,0x666677,0.9); scene.add(hemi);
+const dir=new THREE.DirectionalLight(0xffffff,0.5); dir.position.set(5,10,4); scene.add(dir);
+const point=new THREE.PointLight(0xffcc88,0.001,12); point.position.set(0,50,0); scene.add(point);
+
+/* ---------- Världar ---------- */
+let worldGroup=new THREE.Group(); scene.add(worldGroup);
+let worldId='vit', worldSeed=1;
+let bounds={minX:-9,maxX:9,minZ:-9,maxZ:9};
+let obstacles=[]; // {minX,maxX,minZ,maxZ}
+let disposables=[];
+const WORLD_NAMES={vit:'Vita rummet',rum:'Stökiga rummet',park:'Parken'};
+const WORLD_ORDER=['vit','rum','park'];
+
+function G(geo){disposables.push(geo);return geo;}
+function M(mat){disposables.push(mat);return mat;}
+/* Procedurella canvas-texturer: inga externa filer, små (<=256 px) och billiga för Quest 2.
+   Skapas per världsbygge och städas via disposables precis som geometrier/material. */
+function canvasTex(size,repeat,draw){
+  const cv=document.createElement('canvas'); cv.width=cv.height=size;
+  draw(cv.getContext('2d'),size);
+  const t=new THREE.CanvasTexture(cv);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(repeat,repeat);
+  disposables.push(t);
+  return t;
+}
+function plankTex(){
+  return canvasTex(256,3,(c,s)=>{
+    const shades=['#906b46','#84613e','#8d6844','#7f5d3b'];
+    for(let y=0;y<4;y++){
+      c.fillStyle=shades[y%4]; c.fillRect(0,y*64,s,62);
+      c.fillStyle='rgba(0,0,0,0.25)'; c.fillRect(0,y*64+62,s,2);
+      for(let i=0;i<14;i++){ // ådring
+        c.fillStyle='rgba(50,32,16,'+(0.05+Math.random()*0.09).toFixed(2)+')';
+        c.fillRect(Math.random()*s,y*64+Math.random()*58,20+Math.random()*70,2);
+      }
+      c.fillStyle='rgba(0,0,0,0.2)'; c.fillRect(Math.random()*s,y*64,3,62); // brädskarv
+    }
+  });
+}
+function wallTex(){
+  return canvasTex(128,3,(c,s)=>{
+    c.fillStyle='#cfc6ae'; c.fillRect(0,0,s,s);
+    for(let i=0;i<350;i++){ c.fillStyle='rgba(255,255,255,'+(Math.random()*0.06).toFixed(2)+')'; c.fillRect(Math.random()*s,Math.random()*s,2,2); }
+    for(let i=0;i<250;i++){ c.fillStyle='rgba(90,78,56,'+(Math.random()*0.07).toFixed(2)+')'; c.fillRect(Math.random()*s,Math.random()*s,2,2); }
+  });
+}
+function grassTex(){
+  return canvasTex(256,14,(c,s)=>{
+    c.fillStyle='#5da24a'; c.fillRect(0,0,s,s);
+    const greens=['#549646','#63aa50','#4e8c40','#6db35a'];
+    for(let i=0;i<900;i++){ c.fillStyle=greens[i%4]; c.fillRect(Math.random()*s,Math.random()*s,2,3); }
+  });
+}
+function rugTex(){
+  return canvasTex(256,1,(c,s)=>{
+    const cols=['#a34a4a','#c9a25a','#7a5e8e','#a34a4a','#c9a25a'];
+    for(let i=0;i<5;i++){ c.fillStyle=cols[i]; c.beginPath(); c.arc(s/2,s/2,s/2-i*24,0,7); c.fill(); }
+    for(let i=0;i<300;i++){ c.fillStyle='rgba(0,0,0,'+(Math.random()*0.1).toFixed(2)+')'; c.fillRect(Math.random()*s,Math.random()*s,2,2); }
+  });
+}
+function box(w,h,d,x,y,z,mat,ry){
+  const m=new THREE.Mesh(G(new THREE.BoxGeometry(w,h,d)),mat);
+  m.position.set(x,y,z); if(ry)m.rotation.y=ry; worldGroup.add(m); return m;
+}
+function blockObstacle(x,z,w,d,pad){pad=pad===undefined?0.3:pad;obstacles.push({minX:x-w/2-pad,maxX:x+w/2+pad,minZ:z-d/2-pad,maxZ:z+d/2+pad});}
+
+function buildWorld(id,seed){
+  worldId=id; worldSeed=seed;
+  scene.remove(worldGroup);
+  disposables.forEach(d=>{try{d.dispose();}catch(e){}});
+  disposables=[]; obstacles=[];
+  worldGroup=new THREE.Group(); scene.add(worldGroup);
+  const R=mulberry32(seed);
+
+  if(id==='vit'){
+    scene.background=new THREE.Color(0xffffff);
+    scene.fog=new THREE.Fog(0xffffff,12,45);
+    hemi.color.set(0xffffff); hemi.groundColor.set(0xf0f0f0); hemi.intensity=1.15;
+    dir.intensity=0.35; dir.color.set(0xffffff);
+    point.intensity=0.001; point.position.set(0,50,0);
+    const vitTex=canvasTex(256,1,(c,s)=>{ // mjuk vinjett så golvet inte är dödvitt
+      const gr=c.createRadialGradient(s/2,s/2,20,s/2,s/2,s/2);
+      gr.addColorStop(0,'#ffffff'); gr.addColorStop(1,'#eef0f4');
+      c.fillStyle=gr; c.fillRect(0,0,s,s);
+    });
+    const floor=new THREE.Mesh(G(new THREE.PlaneGeometry(80,80)),M(new THREE.MeshLambertMaterial({map:vitTex})));
+    floor.rotation.x=-Math.PI/2; worldGroup.add(floor);
+    const grid=new THREE.GridHelper(60,60,0xe4e4e8,0xefeff2); worldGroup.add(grid);
+    disposables.push(grid.geometry,grid.material);
+    bounds={minX:-16,maxX:16,minZ:-16,maxZ:16};
+
+  } else if(id==='rum'){
+    scene.background=new THREE.Color(0x191922);
+    scene.fog=null;
+    hemi.color.set(0xfff2dd); hemi.groundColor.set(0x443c33); hemi.intensity=0.55;
+    dir.intensity=0.15; dir.color.set(0xaabbee);
+    point.color.set(0xffcc88); point.intensity=1.0; point.distance=14; point.position.set(0,2.55,0);
+    const W=10, D=8, H=3;
+    // Golv (trätextur) och tak
+    box(W,0.1,D,0,-0.05,0,M(new THREE.MeshLambertMaterial({map:plankTex()})));
+    box(W,0.1,D,0,H,0,M(new THREE.MeshLambertMaterial({color:0xd8d2c0})));
+    // Väggar (tapetstruktur)
+    const wallMat=M(new THREE.MeshLambertMaterial({map:wallTex()}));
+    box(W,H,0.2,0,H/2,-D/2,wallMat); box(W,H,0.2,0,H/2,D/2,wallMat);
+    box(0.2,H,D,-W/2,H/2,0,wallMat); box(0.2,H,D,W/2,H/2,0,wallMat);
+    // Matta under soffgruppen
+    const rug=new THREE.Mesh(G(new THREE.CircleGeometry(1.5,24)),M(new THREE.MeshLambertMaterial({map:rugTex()})));
+    rug.rotation.x=-Math.PI/2; rug.rotation.z=0.4; rug.position.set(-3.2,0.012,1.8); worldGroup.add(rug);
+    // Fönster (emissivt, ingen extra ljuskälla) med karm och spröjs
+    box(2.4,1.3,0.06,-1.8,1.7,-D/2+0.11,M(new THREE.MeshLambertMaterial({color:0x9fd0ff,emissive:0x5588cc})));
+    const frameMat=M(new THREE.MeshLambertMaterial({color:0x5a4632}));
+    box(2.5,0.06,0.1,-1.8,1.05,-D/2+0.13,frameMat); box(2.5,0.06,0.1,-1.8,2.35,-D/2+0.13,frameMat);
+    box(0.06,1.36,0.1,-3.0,1.7,-D/2+0.13,frameMat); box(0.06,1.36,0.1,-0.6,1.7,-D/2+0.13,frameMat);
+    box(0.05,1.3,0.09,-1.8,1.7,-D/2+0.13,frameMat); box(2.4,0.05,0.09,-1.8,1.7,-D/2+0.13,frameMat);
+    // Taklampa (emissiv kupa + punktljuset ovan)
+    box(0.05,0.5,0.05,0,H-0.25,0,M(new THREE.MeshLambertMaterial({color:0x333333})));
+    const lampMat=M(new THREE.MeshLambertMaterial({color:0xfff0c0,emissive:0xffdd88}));
+    const lamp=new THREE.Mesh(G(new THREE.SphereGeometry(0.22,10,8)),lampMat); lamp.position.set(0,H-0.55,0); worldGroup.add(lamp);
+    // Soffa
+    const sofaMat=M(new THREE.MeshLambertMaterial({color:0x46628e}));
+    box(2.4,0.5,0.9,-3.2,0.25,2.6,sofaMat); box(2.4,0.7,0.25,-3.2,0.75,3.15,sofaMat);
+    box(0.25,0.65,0.9,-4.5,0.55,2.6,sofaMat); box(0.25,0.65,0.9,-1.9,0.55,2.6,sofaMat);
+    blockObstacle(-3.2,2.8,2.8,1.4);
+    // Bord med prylar
+    const woodMat=M(new THREE.MeshLambertMaterial({color:0x6b4a2c}));
+    box(1.5,0.08,0.9,-3.2,0.5,1.1,woodMat);
+    box(0.08,0.5,0.08,-3.85,0.25,0.75,woodMat); box(0.08,0.5,0.08,-2.55,0.25,0.75,woodMat);
+    box(0.08,0.5,0.08,-3.85,0.25,1.45,woodMat); box(0.08,0.5,0.08,-2.55,0.25,1.45,woodMat);
+    box(0.35,0.05,0.35,-3.4,0.57,1.1,M(new THREE.MeshLambertMaterial({color:0xddaa55}))); // pizzakartong
+    blockObstacle(-3.2,1.1,1.6,1.0);
+    // TV-bänk med TV
+    box(2.0,0.5,0.5,2.8,0.25,-3.55,woodMat);
+    box(1.6,0.9,0.08,2.8,1.0,-3.6,M(new THREE.MeshLambertMaterial({color:0x111111})));
+    box(1.4,0.7,0.02,2.8,1.0,-3.55,M(new THREE.MeshLambertMaterial({color:0x224466,emissive:0x113355})));
+    blockObstacle(2.8,-3.55,2.2,0.8);
+    // Bokhylla med slumpade böcker
+    box(0.35,2.2,1.6,4.7,1.1,1.5,woodMat);
+    blockObstacle(4.7,1.5,0.6,1.8);
+    const bookGeo=G(new THREE.BoxGeometry(0.08,0.3,0.22));
+    const bookMats=[0xaa3333,0x33aa55,0x3355aa,0xddbb33,0x884499].map(c=>M(new THREE.MeshLambertMaterial({color:c})));
+    for(let s=0;s<3;s++){
+      for(let i=0;i<9;i++){
+        if(R()<0.12) continue; // luckor här och var ser bebott ut
+        const b=new THREE.Mesh(bookGeo,bookMats[Math.floor(R()*bookMats.length)]);
+        b.position.set(4.62,0.45+s*0.6,0.85+i*0.14);
+        b.rotation.z=(R()-0.5)*0.2;
+        worldGroup.add(b);
+      }
+    }
+    // Stökigt skräp på golvet: lådor, kläder, böcker, muggar
+    const junkGeos=[G(new THREE.BoxGeometry(0.4,0.3,0.4)),G(new THREE.BoxGeometry(0.3,0.06,0.4)),
+                    G(new THREE.BoxGeometry(0.22,0.3,0.08)),G(new THREE.CylinderGeometry(0.05,0.04,0.1,8))];
+    const junkMats=[0xbb8855,0x99aabb,0xcc6677,0x77aa66,0xddddcc,0x8877cc].map(c=>M(new THREE.MeshLambertMaterial({color:c})));
+    for(let i=0;i<26;i++){
+      const gI=Math.floor(R()*junkGeos.length);
+      const m=new THREE.Mesh(junkGeos[gI],junkMats[Math.floor(R()*junkMats.length)]);
+      let x=(R()-0.5)*(W-1.6), z=(R()-0.5)*(D-1.6);
+      if(Math.abs(x)<1&&Math.abs(z)<1){x+=2;} // lämna mitten lite fri
+      m.position.set(x,0.06+ (gI===0?0.12:gI===3?0.05:0.03),z);
+      m.rotation.y=R()*6.28;
+      worldGroup.add(m);
+    }
+    bounds={minX:-W/2+0.5,maxX:W/2-0.5,minZ:-D/2+0.5,maxZ:D/2-0.5};
+
+  } else { // park
+    scene.background=new THREE.Color(0x8ecdf0);
+    scene.fog=new THREE.Fog(0x8ecdf0,25,90);
+    hemi.color.set(0xcfe8ff); hemi.groundColor.set(0x4a7a3a); hemi.intensity=0.75;
+    dir.intensity=0.9; dir.color.set(0xfff2d0); dir.position.set(8,14,6);
+    point.intensity=0.001; point.position.set(0,50,0);
+    const floor=new THREE.Mesh(G(new THREE.PlaneGeometry(90,90)),M(new THREE.MeshLambertMaterial({map:grassTex()})));
+    floor.rotation.x=-Math.PI/2; worldGroup.add(floor);
+    // Damm med sandkant
+    const pondX=(R()-0.5)*10, pondZ=-(4+R()*6);
+    const pond=new THREE.Mesh(G(new THREE.CircleGeometry(2.6,20)),M(new THREE.MeshLambertMaterial({color:0x3f88c5,emissive:0x102a44})));
+    pond.rotation.x=-Math.PI/2; pond.position.set(pondX,0.02,pondZ); worldGroup.add(pond);
+    const rim=new THREE.Mesh(G(new THREE.RingGeometry(2.6,2.9,20)),M(new THREE.MeshLambertMaterial({color:0xc9b98a})));
+    rim.rotation.x=-Math.PI/2; rim.position.set(pondX,0.015,pondZ); worldGroup.add(rim);
+    // Träd (InstancedMesh: stammar + kronor i två gröna nyanser för variation)
+    const N=14;
+    const trunkI=new THREE.InstancedMesh(G(new THREE.CylinderGeometry(0.16,0.22,1.7,7)),M(new THREE.MeshLambertMaterial({color:0x6b4a2c})),N);
+    const crownGeo=G(new THREE.SphereGeometry(1.15,9,7));
+    const crownA=new THREE.InstancedMesh(crownGeo,M(new THREE.MeshLambertMaterial({color:0x3f8f3f,flatShading:true})),Math.ceil(N/2));
+    const crownB=new THREE.InstancedMesh(crownGeo,M(new THREE.MeshLambertMaterial({color:0x55a344,flatShading:true})),Math.floor(N/2));
+    const dummy=new THREE.Object3D();
+    let ca=0,cb=0;
+    for(let i=0;i<N;i++){
+      let x,z,tries=0;
+      do{ x=(R()-0.5)*32; z=(R()-0.5)*32; tries++; }
+      while(tries<20 && ((Math.abs(x)<3&&Math.abs(z)<3) || Math.hypot(x-pondX,z-pondZ)<4));
+      const s=0.8+R()*0.6;
+      dummy.position.set(x,0.85*s,z); dummy.scale.set(s,s,s); dummy.rotation.set(0,R()*6.28,0);
+      dummy.updateMatrix(); trunkI.setMatrixAt(i,dummy.matrix);
+      dummy.position.y=(1.7+0.7)*s; dummy.updateMatrix();
+      if(i%2===0)crownA.setMatrixAt(ca++,dummy.matrix); else crownB.setMatrixAt(cb++,dummy.matrix);
+      blockObstacle(x,z,0.5*s,0.5*s);
+    }
+    worldGroup.add(trunkI,crownA,crownB);
+    // Blommor (instansierade i tre färger)
+    const flowerGeo=G(new THREE.ConeGeometry(0.07,0.16,6));
+    [0xff5577,0xffdd44,0xffffff].forEach(c=>{
+      const fi=new THREE.InstancedMesh(flowerGeo,M(new THREE.MeshLambertMaterial({color:c,emissive:0x111111})),25);
+      for(let i=0;i<25;i++){
+        dummy.position.set((R()-0.5)*36,0.08,(R()-0.5)*36);
+        dummy.scale.set(1,1,1); dummy.rotation.set(0,0,0); dummy.updateMatrix();
+        fi.setMatrixAt(i,dummy.matrix);
+      }
+      worldGroup.add(fi);
+    });
+    // Bänkar
+    const benchMat=M(new THREE.MeshLambertMaterial({color:0x7a5230}));
+    [[3,2,0.5],[-4,4,-0.9]].forEach(([bx,bz,ry])=>{
+      const b1=box(1.6,0.08,0.45,bx,0.45,bz,benchMat,ry);
+      const b2=box(1.6,0.5,0.08,bx-Math.sin(ry)*0.25,0.75,bz-Math.cos(ry)*0.25,benchMat,ry);
+      box(0.08,0.45,0.4,bx-Math.cos(ry)*0.7,0.22,bz+Math.sin(ry)*0.7,benchMat,ry);
+      box(0.08,0.45,0.4,bx+Math.cos(ry)*0.7,0.22,bz-Math.sin(ry)*0.7,benchMat,ry);
+      blockObstacle(bx,bz,1.7,0.9);
+    });
+    // Staket (instansierade stolpar) + gräns
+    const F=18, posts=[];
+    for(let v=-F;v<=F;v+=2){posts.push([v,-F],[v,F],[-F,v],[F,v]);}
+    const postI=new THREE.InstancedMesh(G(new THREE.BoxGeometry(0.12,1.0,0.12)),benchMat,posts.length);
+    posts.forEach((p,i)=>{dummy.position.set(p[0],0.5,p[1]);dummy.scale.set(1,1,1);dummy.rotation.set(0,0,0);dummy.updateMatrix();postI.setMatrixAt(i,dummy.matrix);});
+    worldGroup.add(postI);
+    box(2*F,0.08,0.06,0,0.85,-F,benchMat); box(2*F,0.08,0.06,0,0.85,F,benchMat);
+    box(0.06,0.08,2*F,-F,0.85,0,benchMat); box(0.06,0.08,2*F,F,0.85,0,benchMat);
+    bounds={minX:-F+0.6,maxX:F-0.6,minZ:-F+0.6,maxZ:F-0.6};
+  }
+  refreshHUD();
+}
+
+/* ---------- Kollision: korrigera huvudets position, applicera på dollyn ---------- */
+const RAD=0.3;
+const headPos=new THREE.Vector3();
+function collide(){
+  dolly.updateMatrixWorld(true);
+  camera.getWorldPosition(headPos);
+  let x=headPos.x, z=headPos.z;
+  x=Math.max(bounds.minX,Math.min(bounds.maxX,x));
+  z=Math.max(bounds.minZ,Math.min(bounds.maxZ,z));
+  for(const o of obstacles){
+    if(x>o.minX&&x<o.maxX&&z>o.minZ&&z<o.maxZ){
+      const dl=x-o.minX, dr=o.maxX-x, dn=z-o.minZ, df=o.maxZ-z;
+      const m=Math.min(dl,dr,dn,df);
+      if(m===dl)x=o.minX; else if(m===dr)x=o.maxX; else if(m===dn)z=o.minZ; else z=o.maxZ;
+    }
+  }
+  dolly.position.x+=x-headPos.x;
+  dolly.position.z+=z-headPos.z;
+}
+
+/* ---------- Spelare ---------- */
+/* players[id] = {cfg, group, nameSprite, bubble:{sprite,until}, target:{x,z,ry}, mv, isRemote} */
+let players={};
+let inWorld=false, isHost=false, roomCode='', myId='';
+let peer=null, hostConn=null, guestConns=[]; // guestConns endast för värden
+const MAX_PLAYERS=5;
+
+function spawnPoint(i){const a=i*2.4+0.7;return {x:Math.cos(a)*1.8,z:Math.sin(a)*1.8};}
+
+function addPlayer(id,cfg){
+  if(players[id]) removePlayer(id,true);
+  const group=makeAvatar(cfg);
+  const nameSprite=makeTextSprite(cfg.name||'Namnlös',{fontSize:40,scale:0.004});
+  nameSprite.position.y=2.05; group.add(nameSprite);
+  const i=Object.keys(players).length;
+  const sp=spawnPoint(i);
+  group.position.set(sp.x,0,sp.z);
+  scene.add(group);
+  players[id]={cfg,group,nameSprite,bubble:null,target:{x:sp.x,z:sp.z,ry:0,rx:0},mv:0,hands:null,emote:null,handCur:null};
+  refreshHUD();
+}
+function removePlayer(id,silent){
+  const p=players[id]; if(!p)return;
+  scene.remove(p.group);
+  delete players[id];
+  if(!silent){addSysChat((p.cfg.name||'Någon')+' lämnade rummet');sndLeave();}
+  refreshHUD();
+}
+
+/* Pratbubbla ovanför en spelare */
+function showBubble(id,text){
+  const p=players[id]; if(!p)return;
+  if(p.bubble){p.group.remove(p.bubble.sprite);p.bubble.sprite.material.map.dispose();p.bubble.sprite.material.dispose();}
+  const sp=makeTextSprite(text,{fontSize:40,scale:0.0045,bg:'rgba(255,255,255,0.95)',color:'#222'});
+  sp.position.y=2.4; p.group.add(sp);
+  p.bubble={sprite:sp,until:performance.now()+5000};
+}
+
+/* ---------- Chatt ---------- */
+const chatLogArr=[]; // {name,msg}
+let lastChatSent=0;
+function addChat(id,name,msg){
+  chatLogArr.push({name,msg}); if(chatLogArr.length>40)chatLogArr.shift();
+  const d=document.createElement('div');
+  d.innerHTML='<b>'+escapeHtml(name)+':</b> '+escapeHtml(msg);
+  $('chatLog').appendChild(d); $('chatLog').scrollTop=99999;
+  if(id&&players[id]) showBubble(id,msg);
+  sndChat(); redrawWrist();
+}
+function addSysChat(msg){
+  chatLogArr.push({name:'',msg}); if(chatLogArr.length>40)chatLogArr.shift();
+  const d=document.createElement('div');
+  d.innerHTML='<i style="opacity:.7">'+escapeHtml(msg)+'</i>';
+  $('chatLog').appendChild(d); $('chatLog').scrollTop=99999;
+  redrawWrist();
+}
+function sendChat(msg){
+  msg=(msg||'').trim(); if(!msg)return;
+  const now=performance.now();
+  if(now-lastChatSent<1200){toast('Lugn, vänta lite mellan meddelanden 😄');return;}
+  lastChatSent=now;
+  addChat(myId,myCfg.name,msg);
+  if(isHost) broadcast({t:'chat',id:'host',name:myCfg.name,msg});
+  else if(hostConn&&hostConn.open) hostConn.send({t:'chat',msg});
+}
+
+/* ---------- Nätverk (PeerJS, värden är auktoritet och relä) ----------
+   Regel (LESSONS #4/#9): rumskoden skapas lokalt och visas ALLTID direkt.
+   Nätverket får bara påverka statusraden, aldrig koden eller världen. */
+let netStatus='off'; // off | lib | ansluter | ateransluter | online | fel
+let everOpened=false, hostRetryT=null, guestRetryT=null, guestRetries=0, reconnecting=false;
+let hostLastSeen=0, pongDeadline=0;
+function netText(){
+  switch(netStatus){
+    case 'online': return 'online';
+    case 'ansluter': return 'kopplar upp...';
+    case 'ateransluter': return 'återansluter...';
+    case 'fel': return isHost?'offline – ingen kan ansluta ännu, försöker igen':'offline – försöker igen';
+    case 'lib': return 'kunde inte ladda – ladda om sidan';
+    default: return '–';
+  }
+}
+function setNet(s){ netStatus=s; refreshHUD(); }
+function broadcast(obj,except){ guestConns.forEach(c=>{ if(c!==except && c.open) c.send(obj); }); }
+
+/* PeerJS laddas från CDN i head, men om den laddningen misslyckades (segt nät,
+   blockerad CDN) får det inte stoppa spelet: prova alternativa CDN:er i efterhand. */
+const PEER_URLS=[
+  'https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js',
+  'https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js',
+  'https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js'];
+function ensurePeerLib(cb,i){
+  if(typeof Peer!=='undefined'){ cb(); return; }
+  i=i||0;
+  if(i>=PEER_URLS.length){
+    setNet('lib');
+    addSysChat('Nätverksbiblioteket kunde inte laddas. Du kan gå runt, men ingen kan ansluta. Kontrollera internet och ladda om sidan.');
+    $('joinErr').textContent='Nätverksbiblioteket kunde inte laddas. Kontrollera internet och ladda om sidan.';
+    return;
+  }
+  const s=document.createElement('script'); s.src=PEER_URLS[i];
+  s.onload=()=>{ if(typeof Peer!=='undefined')cb(); else ensurePeerLib(cb,i+1); };
+  s.onerror=()=>ensurePeerLib(cb,i+1);
+  document.head.appendChild(s);
+}
+
+function startHost(){
+  myId='host'; isHost=true;
+  roomCode=randCode(); // koden finns direkt och rensas aldrig, oavsett nätverk
+  enterWorld();
+  ensurePeerLib(()=>createHostPeer(0,false));
+}
+/* reuse=true: behåll samma rumskod (återanslutning). reuse=false: ny kod vid krock. */
+function createHostPeer(attempt,reuse){
+  if(!reuse&&attempt>0){ roomCode=randCode(); }
+  setNet(everOpened?'ateransluter':'ansluter');
+  try{ peer=new Peer('pratrum-'+roomCode); }
+  catch(e){ setNet('fel'); addSysChat('Nätverksfel: '+e.message); scheduleHostRetry(); return; }
+  let opened=false;
+  peer.on('open',()=>{
+    opened=true; setNet('online');
+    if(!everOpened){ everOpened=true; addSysChat('Rum skapat! Kod: '+roomCode.toUpperCase()+' – dela den med kompisarna.'); }
+    else addSysChat('Nätverket är tillbaka, koden '+roomCode.toUpperCase()+' funkar igen.');
+  });
+  peer.on('error',e=>{
+    if(e.type==='unavailable-id'){
+      try{peer.destroy();}catch(_){}
+      // Vid återanslutning kan serverns gamla registrering ligga kvar en stund: vänta och ta samma kod igen
+      if(attempt<4){ setTimeout(()=>createHostPeer(attempt+1,reuse),reuse?2000:0); }
+      else { setNet('fel'); scheduleHostRetry(); }
+    } else if(!opened){
+      setNet('fel');
+      if(!everOpened) addSysChat('Kunde inte nå förmedlingsservern ('+e.type+'). Koden '+roomCode.toUpperCase()+' visas ändå och börjar funka så fort nätet svarar – försöker igen automatiskt.');
+      scheduleHostRetry();
+    } else if(e.type!=='peer-unavailable'){ toast('Nätverksfel: '+e.type); }
+  });
+  peer.on('disconnected',()=>{
+    if(peer&&!peer.destroyed){ setNet('ateransluter'); try{peer.reconnect();}catch(e){ scheduleHostRetry(); } }
+  });
+  peer.on('connection',conn=>{
+    conn.on('open',()=>{
+      if(Object.keys(players).length>=MAX_PLAYERS){ conn.send({t:'full'}); setTimeout(()=>conn.close(),300); return; }
+    });
+    conn.on('data',d=>hostOnData(conn,d));
+    conn.on('close',()=>{
+      const idx=guestConns.indexOf(conn);
+      if(idx>=0){ guestConns.splice(idx,1); removePlayer(conn.peer); broadcast({t:'leave',id:conn.peer}); }
+    });
+  });
+  setTimeout(()=>{ if(!opened&&peer&&!peer.destroyed&&netStatus!=='online') addSysChat('Nätverket svarar långsamt. Koden '+roomCode.toUpperCase()+' visas, men ingen kan ansluta ännu...'); },7000);
+}
+function scheduleHostRetry(){
+  if(hostRetryT)return;
+  hostRetryT=setTimeout(()=>{
+    hostRetryT=null;
+    if(isHost&&inWorld&&(!peer||peer.destroyed||!peer.open)){
+      try{ if(peer)peer.destroy(); }catch(_){}
+      ensurePeerLib(()=>createHostPeer(0,true));
+    }
+  },8000);
+}
+function hostOnData(conn,d){
+  if(d.t==='hello'){
+    if(Object.keys(players).length>=MAX_PLAYERS){ conn.send({t:'full'}); return; }
+    guestConns.push(conn);
+    // Skicka världstillstånd + befintliga spelare
+    const list={}; for(const id in players) list[id]=players[id].cfg;
+    conn.send({t:'valkommen',world:worldId,seed:worldSeed,players:list});
+    addPlayer(conn.peer,d.cfg);
+    addSysChat((d.cfg.name||'Någon')+' kom in i rummet'); sndJoin();
+    broadcast({t:'join',id:conn.peer,cfg:d.cfg},conn);
+  } else if(d.t==='p'){
+    const p=players[conn.peer];
+    if(p){ p.target.x=d.x; p.target.z=d.z; p.target.ry=d.ry; p.target.rx=d.rx||0; p.hands=d.h||null; p.mv=d.mv; }
+    broadcast(Object.assign({},d,{id:conn.peer}),conn);
+  } else if(d.t==='emote'){
+    playEmote(conn.peer,d.kind);
+    broadcast({t:'emote',id:conn.peer,kind:d.kind},conn);
+  } else if(d.t==='chat'){
+    const name=players[conn.peer]?players[conn.peer].cfg.name:'?';
+    addChat(conn.peer,name,String(d.msg).slice(0,80));
+    broadcast({t:'chat',id:conn.peer,name,msg:String(d.msg).slice(0,80)},conn);
+  } else if(d.t==='ping'){
+    conn._lastPong=performance.now(); conn.send({t:'pong'});
+  } else if(d.t==='pong'){
+    conn._lastPong=performance.now();
+  }
+}
+/* Städa bort döda gästanslutningar (mobiler som somnat utan close-event),
+   annars blockerar spöken platser i rummet. */
+setInterval(()=>{
+  if(!isHost||!inWorld)return;
+  const now=performance.now();
+  guestConns.slice().forEach(c=>{
+    if(!c.open)return;
+    if(c._lastPong===undefined)c._lastPong=now;
+    if(now-c._lastPong>25000){ try{c.close();}catch(_){ } }
+    else { try{c.send({t:'ping'});}catch(_){ } }
+  });
+},10000);
+
+function startGuest(code){
+  myId='gäst'; isHost=false; roomCode=code; guestRetries=0; reconnecting=false;
+  $('joinErr').textContent='Ansluter...';
+  ensurePeerLib(()=>guestConnect(false));
+}
+/* isReconnect=true: vi är redan inne i världen och ska tyst ta upp tråden igen */
+function guestConnect(isReconnect){
+  if(reconnecting)return;
+  reconnecting=true;
+  if(inWorld)setNet(isReconnect?'ateransluter':'ansluter');
+  try{ if(peer)peer.destroy(); }catch(_){}
+  try{ peer=new Peer(); }
+  catch(e){ reconnecting=false; if(!inWorld)$('joinErr').textContent='Nätverksfel: '+e.message; else scheduleGuestRetry(); return; }
+  let done=false;
+  peer.on('open',()=>{
+    hostConn=peer.connect('pratrum-'+roomCode,{reliable:true});
+    hostConn.on('open',()=>{ hostConn.send({t:'hello',cfg:myCfg}); });
+    hostConn.on('data',d=>guestOnData(d,()=>{done=true;}));
+    hostConn.on('close',()=>{ onHostLost(); });
+  });
+  peer.on('error',e=>{
+    reconnecting=false;
+    if(!inWorld){
+      $('joinErr').textContent = e.type==='peer-unavailable' ? 'Hittade inget rum med den koden.' : 'Nätverksfel ('+e.type+'). Försök igen.';
+    } else { setNet('fel'); scheduleGuestRetry(); }
+  });
+  peer.on('disconnected',()=>{ try{peer.reconnect();}catch(e){} });
+  setTimeout(()=>{
+    if(!done){ reconnecting=false; if(!inWorld)$('joinErr').textContent='Hittade inget rum med den koden.'; else scheduleGuestRetry(); }
+  },8000);
+}
+/* Kontakten med värden bröts: stanna kvar i världen och återanslut i bakgrunden.
+   (Tidigare kastades man ut till startskärmen, vilket är buggen "mobilen tappar koden".) */
+function onHostLost(){
+  if(!inWorld||isHost)return;
+  if(reconnecting||guestRetryT)return;
+  setNet('ateransluter');
+  toast('Tappade kontakten med värden, återansluter...');
+  scheduleGuestRetry(1500);
+}
+function scheduleGuestRetry(delay){
+  if(guestRetryT||isHost)return;
+  guestRetryT=setTimeout(()=>{
+    guestRetryT=null;
+    if(inWorld&&!isHost&&(!hostConn||!hostConn.open)){
+      guestRetries++;
+      if(guestRetries<=12){ ensurePeerLib(()=>guestConnect(true)); }
+      else {
+        setNet('fel'); guestRetries=0;
+        addSysChat('Kunde inte återansluta till rummet. Koden står kvar och jag försöker igen så fort nätet är tillbaka.');
+      }
+    }
+  },delay===undefined?4000:delay);
+}
+function guestOnData(d,onWelcome){
+  hostLastSeen=performance.now(); pongDeadline=0;
+  if(d.t==='valkommen'){
+    onWelcome(); reconnecting=false; guestRetries=0;
+    if(!inWorld){
+      buildWorld(d.world,d.seed);
+      for(const id in d.players) addPlayer(id,d.players[id]);
+      enterWorld(true);
+      addSysChat('Du gick med i rummet. Säg hej!');
+    } else {
+      // Återanslutning: synka värld och spelarlista utan att kasta ut spelaren
+      if(d.world!==worldId||d.seed!==worldSeed){ buildWorld(d.world,d.seed); dolly.position.set(0,0,0); }
+      for(const id in players){ if(id!==myId&&!d.players[id]) removePlayer(id,true); }
+      for(const id in d.players){ if(!players[id]) addPlayer(id,d.players[id]); }
+      addSysChat('Återansluten till rummet!');
+    }
+    setNet('online');
+  } else if(d.t==='full'){
+    reconnecting=false;
+    if(inWorld){ addSysChat('Rummet är fullt just nu, försöker igen om en stund...'); scheduleGuestRetry(); }
+    else $('joinErr').textContent='Rummet är fullt (max '+MAX_PLAYERS+' spelare).';
+  } else if(d.t==='ping'){
+    if(hostConn&&hostConn.open)hostConn.send({t:'pong'});
+  } else if(d.t==='pong'){
+    /* hostLastSeen är redan uppdaterad ovan */
+  } else if(d.t==='join'){
+    addPlayer(d.id,d.cfg); addSysChat((d.cfg.name||'Någon')+' kom in i rummet'); sndJoin();
+  } else if(d.t==='leave'){
+    removePlayer(d.id);
+  } else if(d.t==='p'){
+    const p=players[d.id];
+    if(p){ p.target.x=d.x; p.target.z=d.z; p.target.ry=d.ry; p.target.rx=d.rx||0; p.hands=d.h||null; p.mv=d.mv; }
+  } else if(d.t==='emote'){
+    playEmote(d.id,d.kind);
+  } else if(d.t==='chat'){
+    addChat(d.id,d.name,d.msg);
+  } else if(d.t==='world'){
+    buildWorld(d.world,d.seed);
+    dolly.position.set(0,0,0); dolly.rotation.y=0;
+    addSysChat('Värden bytte värld till '+WORLD_NAMES[d.world]); sndWorld();
+  }
+}
+
+/* Värden byter värld */
+function hostSetWorld(id){
+  if(!isHost)return;
+  const seed=Math.floor(Math.random()*1e9);
+  buildWorld(id,seed);
+  dolly.position.set(0,0,0); if(!renderer.xr.isPresenting) dolly.rotation.y=0;
+  broadcast({t:'world',world:id,seed});
+  addSysChat('Du bytte värld till '+WORLD_NAMES[id]); sndWorld();
+}
+
+/* ---------- Överlev viloläge (LESSONS: mobilen läggs ner) ----------
+   När sidan suspenderas dör sockets ofta tyst, utan close-event. Anta aldrig
+   att en "öppen" anslutning lever efter en suspendering: verifiera med ping. */
+function ensureNetwork(){
+  if(!inWorld)return;
+  if(isHost){
+    if(!peer||peer.destroyed){ ensurePeerLib(()=>createHostPeer(0,true)); }
+    else if(peer.disconnected){ setNet('ateransluter'); try{peer.reconnect();}catch(e){ scheduleHostRetry(); } }
+  } else {
+    if(!peer||peer.destroyed||!hostConn||!hostConn.open){
+      if(guestRetryT){clearTimeout(guestRetryT);guestRetryT=null;}
+      guestRetries=0; scheduleGuestRetry(300);
+    } else {
+      // Anslutningen ser öppen ut: skicka ping och kräv pong inom 4 s
+      try{ hostConn.send({t:'ping'}); }catch(e){}
+      pongDeadline=performance.now()+4000;
+      setTimeout(()=>{
+        if(pongDeadline&&performance.now()>=pongDeadline&&inWorld&&!isHost){ pongDeadline=0; onHostLost(); }
+      },4200);
+    }
+  }
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden)return;
+  if(actx&&actx.state==='suspended'){ try{actx.resume();}catch(e){} }
+  hostLastSeen=performance.now();
+  ensureNetwork(); refreshHUD();
+});
+addEventListener('pageshow',()=>{ hostLastSeen=performance.now(); ensureNetwork(); refreshHUD(); });
+addEventListener('online',()=>ensureNetwork());
+/* Gäst: om värden varit helt tyst i 30 s är anslutningen död även utan close-event */
+setInterval(()=>{
+  if(isHost||!inWorld||document.hidden)return;
+  if(hostLastSeen&&performance.now()-hostLastSeen>30000) onHostLost();
+},10000);
+
+/* Positionsutskick 15 Hz (position, blickriktning, händer i VR) */
+const _hv=new THREE.Vector3();
+function handOffsets(bodyYaw){
+  let l=null,r=null;
+  [grip0,grip1].forEach(gp=>{
+    if(!gp.userData.hand)return;
+    gp.getWorldPosition(_hv);
+    const ox=_hv.x-headPos.x, oy=_hv.y-headPos.y, oz=_hv.z-headPos.z;
+    const c=Math.cos(bodyYaw), s=Math.sin(bodyYaw);
+    const arr=[+(ox*c-oz*s).toFixed(2),+oy.toFixed(2),+(ox*s+oz*c).toFixed(2)];
+    if(gp.userData.hand==='left')l=arr; else r=arr;
+  });
+  return (l||r)?{l,r}:null;
+}
+setInterval(()=>{
+  if(!inWorld)return;
+  dolly.updateMatrixWorld(true);
+  camera.getWorldPosition(headPos);
+  const e=new THREE.Euler().setFromQuaternion(camera.getWorldQuaternion(new THREE.Quaternion()),'YXZ');
+  const msg={t:'p',x:+headPos.x.toFixed(3),z:+headPos.z.toFixed(3),ry:+e.y.toFixed(3),rx:+e.x.toFixed(2),mv:moving?1:0};
+  if(renderer.xr.isPresenting){ const h=handOffsets(e.y); if(h)msg.h=h; }
+  if(isHost) broadcast(Object.assign({id:'host'},msg));
+  else if(hostConn&&hostConn.open) hostConn.send(msg);
+},66);
+
+/* ---------- Inmatning: platt läge ---------- */
+const keys={};
+let yaw=0,pitch=0,moving=false;
+const isTouch=('ontouchstart' in window)||(window.matchMedia&&matchMedia('(pointer: coarse)').matches);
+let chatOpen=false, emotePanelOpen=false;
+function lockPointer(){
+  if(isTouch)return;
+  try{ const p=renderer.domElement.requestPointerLock(); if(p&&p.catch)p.catch(()=>{}); }catch(e){}
+}
+function openChat(){
+  chatOpen=true; $('chatRow').classList.remove('hidden');
+  if(document.exitPointerLock)document.exitPointerLock();
+  setTimeout(()=>$('chatInput').focus(),0);
+}
+function closeChat(relock){
+  chatOpen=false; $('chatInput').blur();
+  if(!isTouch)$('chatRow').classList.add('hidden');
+  if(relock)lockPointer();
+}
+function toggleEmotePanel(force){
+  if(isTouch)return; // alltid synlig på pekskärm
+  emotePanelOpen=(force===undefined)?!emotePanelOpen:force;
+  $('emoteRow').classList.toggle('hidden',!emotePanelOpen);
+}
+addEventListener('keydown',e=>{
+  if(document.activeElement===$('chatInput')||document.activeElement===$('nameInput')||document.activeElement===$('codeInput'))return;
+  keys[e.code]=true;
+  if(!inWorld||renderer.xr.isPresenting)return;
+  if(e.code==='KeyT'){ e.preventDefault(); openChat(); }
+  else if(e.code==='KeyE'){ e.preventDefault(); toggleEmotePanel(); }
+  else if(emotePanelOpen&&/^Digit[1-5]$/.test(e.code)){ e.preventDefault(); doEmote(EMOTE_ORDER[+e.code.slice(5)-1]); toggleEmotePanel(false); }
+});
+addEventListener('keyup',e=>keys[e.code]=false);
+
+let dragging=false,lastX=0,lastY=0;
+renderer.domElement.addEventListener('mousedown',e=>{ if(!inWorld)return; dragging=true; lastX=e.clientX; lastY=e.clientY; });
+renderer.domElement.addEventListener('click',()=>{ if(inWorld&&!renderer.xr.isPresenting&&!chatOpen)lockPointer(); });
+addEventListener('mouseup',()=>dragging=false);
+addEventListener('mousemove',e=>{
+  if(renderer.xr.isPresenting)return;
+  if(document.pointerLockElement===renderer.domElement){
+    yaw-=e.movementX*0.0022; pitch-=e.movementY*0.0022;
+    pitch=Math.max(-1.4,Math.min(1.4,pitch));
+    return;
+  }
+  if(!dragging)return;
+  yaw-=(e.clientX-lastX)*0.005; pitch-=(e.clientY-lastY)*0.005;
+  pitch=Math.max(-1.4,Math.min(1.4,pitch)); lastX=e.clientX; lastY=e.clientY;
+});
+
+/* Pekskärm: vänster halva = virtuell spak, höger halva = titta.
+   Pekhändelser tas bara på canvasen, så menyer och chatt går att använda som vanligt. */
+let stickId=null,stickOrigin={x:0,y:0},stickVec={x:0,y:0},lookId=null,lookLast={x:0,y:0};
+renderer.domElement.addEventListener('touchstart',e=>{
+  if(!inWorld||renderer.xr.isPresenting)return;
+  for(const t of e.changedTouches){
+    if(t.clientX<innerWidth*0.45&&stickId===null){ stickId=t.identifier; stickOrigin={x:t.clientX,y:t.clientY}; stickVec={x:0,y:0}; }
+    else if(lookId===null){ lookId=t.identifier; lookLast={x:t.clientX,y:t.clientY}; }
+  }
+  e.preventDefault();
+},{passive:false});
+renderer.domElement.addEventListener('touchmove',e=>{
+  if(!inWorld||renderer.xr.isPresenting)return;
+  for(const t of e.changedTouches){
+    if(t.identifier===stickId){
+      stickVec={x:(t.clientX-stickOrigin.x)/50,y:(t.clientY-stickOrigin.y)/50};
+      const l=Math.hypot(stickVec.x,stickVec.y); if(l>1){stickVec.x/=l;stickVec.y/=l;}
+    } else if(t.identifier===lookId){
+      yaw-=(t.clientX-lookLast.x)*0.006; pitch-=(t.clientY-lookLast.y)*0.006;
+      pitch=Math.max(-1.4,Math.min(1.4,pitch)); lookLast={x:t.clientX,y:t.clientY};
+    }
+  }
+  e.preventDefault();
+},{passive:false});
+function endTouch(e){
+  for(const t of e.changedTouches){
+    if(t.identifier===stickId){stickId=null;stickVec={x:0,y:0};}
+    if(t.identifier===lookId)lookId=null;
+  }
+}
+renderer.domElement.addEventListener('touchend',endTouch);
+renderer.domElement.addEventListener('touchcancel',endTouch);
+
+/* ---------- VR ---------- */
+let xrSupported=false, xrChecked=false;
+function vrBtnVisible(){ return xrSupported||(!xrChecked&&!!navigator.xr); }
+if(navigator.xr&&navigator.xr.isSessionSupported){
+  navigator.xr.isSessionSupported('immersive-vr')
+    .then(s=>{ xrSupported=s; })
+    .catch(()=>{ xrSupported=false; })
+    .then(()=>{ xrChecked=true; if(inWorld&&!renderer.xr.isPresenting) $('vrBtn').classList.toggle('hidden',!vrBtnVisible()); });
+} else { xrChecked=true; }
+
+const grip0=renderer.xr.getControllerGrip(0);
+const grip1=renderer.xr.getControllerGrip(1);
+dolly.add(grip0); dolly.add(grip1); // Kontroller måste vara barn till dollyn!
+// Enkla kontrollermeshar
+[grip0,grip1].forEach(g=>{
+  const m=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.05,0.12),new THREE.MeshLambertMaterial({color:0x333344}));
+  m.visible=false; g.add(m); g.userData.mesh=m;
+});
+// HUD på handleden: canvas-textur på panel, fäst vid vänstra handledens grip
+const wristCanvas=document.createElement('canvas'); wristCanvas.width=512; wristCanvas.height=512;
+const wristCtx=wristCanvas.getContext('2d');
+const wristTex=new THREE.CanvasTexture(wristCanvas);
+const wristPanel=new THREE.Mesh(new THREE.PlaneGeometry(0.14,0.14),
+  new THREE.MeshBasicMaterial({map:wristTex,transparent:true}));
+wristPanel.position.set(0,0.05,0.09); wristPanel.rotation.x=-0.9; wristPanel.visible=false;
+function redrawWrist(){
+  const c=wristCtx; c.clearRect(0,0,512,512);
+  c.fillStyle='rgba(15,15,30,0.85)'; c.fillRect(0,0,512,512);
+  c.fillStyle='#7b5cff'; c.fillRect(0,0,512,10);
+  c.fillStyle='#fff'; c.font='bold 52px sans-serif';
+  c.fillText('KOD: '+(roomCode?roomCode.toUpperCase():'–'),20,70);
+  c.font='28px sans-serif';
+  c.fillStyle= netStatus==='online' ? '#9f9' : (netStatus==='ansluter'||netStatus==='ateransluter') ? '#fd9' : '#f99';
+  c.fillText('Nätverk: '+netText(),20,108);
+  c.font='32px sans-serif'; c.fillStyle='#bbc';
+  c.fillText('Spelare: '+Object.keys(players).length+' / '+MAX_PLAYERS,20,150);
+  c.fillText('Värld: '+(WORLD_NAMES[worldId]||''),20,188);
+  c.fillStyle='#8f8'; c.font='27px sans-serif';
+  c.fillText('A 👋   B ❤️   X 😂   Y 🎉',20,236);
+  c.fillText('Vänster spak-klick: 💃',20,270);
+  if(isHost){ c.fillStyle='#fc8'; c.fillText('Höger spak-klick: byt värld',20,304); }
+  c.fillStyle='#fff'; c.font='26px sans-serif';
+  const last=chatLogArr.slice(-5);
+  last.forEach((m,i)=>{
+    const line=(m.name?m.name+': ':'')+m.msg;
+    c.fillText(line.length>34?line.slice(0,33)+'…':line,20,344+i*33);
+  });
+  wristTex.needsUpdate=true;
+}
+redrawWrist();
+
+/* HUD:en ska alltid finnas i VR: fäst på vänster hand, men hellre fel hand än ingen alls */
+function onGripConnected(grip,e){
+  grip.userData.hand=e.data.handedness; grip.userData.mesh.visible=true;
+  if(e.data.handedness==='left'){ grip.add(wristPanel); }
+  else if(!wristPanel.parent){ grip.add(wristPanel); } // fallback tills vänster dyker upp
+  redrawWrist();
+}
+grip0.addEventListener('connected',e=>onGripConnected(grip0,e));
+grip1.addEventListener('connected',e=>onGripConnected(grip1,e));
+
+let snapCooldown=0, worldBtnCooldown=0;
+const prevBtns={left:{},right:{}};
+
+/* ---------- Emotes ---------- */
+const EMOTES={vinka:'👋',hjarta:'❤️',skratt:'😂',fest:'🎉',dansa:'💃'};
+const EMOTE_ORDER=['vinka','hjarta','skratt','fest','dansa'];
+const emojiFx=[];
+let lastEmote=0;
+function doEmote(kind){
+  if(!EMOTES[kind]||!inWorld)return;
+  const now=performance.now();
+  if(now-lastEmote<800)return;
+  lastEmote=now;
+  playEmote(myId,kind);
+  if(isHost)broadcast({t:'emote',id:'host',kind});
+  else if(hostConn&&hostConn.open)hostConn.send({t:'emote',kind});
+}
+function playEmote(id,kind){
+  const p=players[id]; if(!p||!EMOTES[kind])return;
+  p.emote={kind,until:performance.now()+2200};
+  const base=new THREE.Vector3();
+  if(id===myId){ camera.getWorldPosition(base); }
+  else { p.group.getWorldPosition(base); base.y+=p.group.userData.hy; }
+  for(let i=0;i<3;i++){
+    const sp=makeTextSprite(EMOTES[kind],{fontSize:64,scale:0.006,bg:'rgba(0,0,0,0)'});
+    sp.position.set(base.x+(Math.random()-0.5)*0.5,base.y+0.25+i*0.1,base.z+(Math.random()-0.5)*0.5);
+    scene.add(sp);
+    emojiFx.push({sp,vy:0.6+Math.random()*0.4,vx:(Math.random()-0.5)*0.25,until:performance.now()+1600+i*150});
+  }
+  beep(520+Math.random()*220,.12,'triangle',.1,950);
+}
+/* VR-spelares armar riktas mot handkontrollerna */
+const _dir=new THREE.Vector3(), _q=new THREE.Quaternion(), _down=new THREE.Vector3(0,-1,0);
+function aimArm(p,pivot,off,key){
+  if(!off){ pivot.rotation.x*=0.85; return; }
+  if(!p.handCur)p.handCur={};
+  if(!p.handCur[key])p.handCur[key]=new THREE.Vector3(off[0],off[1],off[2]);
+  const cur=p.handCur[key];
+  cur.x+=(off[0]-cur.x)*0.35; cur.y+=(off[1]-cur.y)*0.35; cur.z+=(off[2]-cur.z)*0.35;
+  const u=p.group.userData;
+  // Speglat in i avatarens lokala rum (avataren är vänd 180° mot blickriktningen)
+  _dir.set((-cur.x)-pivot.position.x,(u.hy+cur.y)-pivot.position.y,(-cur.z)-pivot.position.z).normalize();
+  _q.setFromUnitVectors(_down,_dir);
+  pivot.quaternion.slerp(_q,0.5);
+}
+function emoteArms(u,kind,t){
+  if(kind==='vinka'){
+    u.rArm.rotation.set(Math.PI-0.3,0,Math.sin(t*0.02)*0.5);
+    u.lArm.rotation.x*=0.85;
+  } else { // dansa
+    u.lArm.rotation.set(Math.PI-0.5+Math.sin(t*0.015)*0.4,0,0.3);
+    u.rArm.rotation.set(Math.PI-0.5-Math.sin(t*0.015)*0.4,0,-0.3);
+  }
+}
+
+function startVR(){
+  if(!navigator.xr){ toast('Den här webbläsaren har ingen VR-funktion'); return; }
+  audio();
+  renderer.xr.setFramebufferScaleFactor(0.9); // FÖRE setSession
+  navigator.xr.requestSession('immersive-vr',{optionalFeatures:['local-floor']}).then(session=>{
+    session.addEventListener('end',()=>{
+      yaw=dolly.rotation.y; // ta med sig riktningen tillbaka till platt läge
+      camera.position.set(0,1.6,0); camera.rotation.set(pitch,0,0);
+      wristPanel.visible=false;
+      $('vrBtn').classList.toggle('hidden',!vrBtnVisible());
+      refreshHUD(); // topplisten ska vara aktuell direkt när man kommer ut
+    });
+    renderer.xr.setSession(session); // r128: returnerar inget promise, får ej kedjas med .then
+    setTimeout(()=>{ try{ session.renderState.baseLayer.fixedFoveation=1; }catch(e){} },800);
+    camera.position.set(0,0,0); camera.rotation.set(0,0,0);
+    dolly.rotation.y=yaw; // ta med blickriktningen in i VR
+    wristPanel.visible=true;
+    redrawWrist(); // HUD:en ska visa aktuell rumskod från första bildrutan i VR
+    // Om ingen kontroll rapporterat handedness inom 2 s: fäst HUD:en på första gripen ändå
+    setTimeout(()=>{ if(renderer.xr.isPresenting&&!wristPanel.parent){ grip0.add(wristPanel); redrawWrist(); } },2000);
+    hide('vrBtn');
+  }).catch(err=>{ console.error(err); toast('Kunde inte starta VR: '+(err&&err.message?err.message:err)); });
+}
+
+function vrInput(dt){
+  const session=renderer.xr.getSession(); if(!session)return;
+  let mx=0,mz=0,turn=0,run=false;
+  for(const src of session.inputSources){
+    if(!src.gamepad)continue;
+    const a=src.gamepad.axes, b=src.gamepad.buttons;
+    if(src.handedness==='left'){
+      mx=a[2]||0; mz=a[3]||0;
+      if(b[1]&&b[1].pressed)run=true; // greppknapp = spring
+      edgeBtn('left',4,()=>doEmote('skratt')); edgeBtn('left',5,()=>doEmote('fest'));
+      edgeBtn('left',3,()=>doEmote('dansa'));
+    } else if(src.handedness==='right'){
+      turn=a[2]||0;
+      if(b[1]&&b[1].pressed)run=true;
+      edgeBtn('right',4,()=>doEmote('vinka')); edgeBtn('right',5,()=>doEmote('hjarta'));
+      if(isHost) edgeBtn('right',3,()=>{ // spak-klick: byt värld
+        if(performance.now()>worldBtnCooldown){
+          worldBtnCooldown=performance.now()+800;
+          const next=WORLD_ORDER[(WORLD_ORDER.indexOf(worldId)+1)%WORLD_ORDER.length];
+          hostSetWorld(next);
+        }
+      });
+    }
+    function edgeBtn(hand,idx,fn){
+      const pressed=b[idx]&&b[idx].pressed;
+      if(pressed&&!prevBtns[hand][idx])fn();
+      prevBtns[hand][idx]=pressed;
+    }
+  }
+  // Rörelse relativt headsetets yaw
+  const q=new THREE.Quaternion(); camera.getWorldQuaternion(q);
+  const e=new THREE.Euler().setFromQuaternion(q,'YXZ');
+  const speed=(run?4.2:2.2)*dt;
+  const dead=0.15;
+  if(Math.hypot(mx,mz)>dead){
+    const s=Math.sin(e.y),c=Math.cos(e.y);
+    dolly.position.x+=(mx*c + mz*s)*speed;
+    dolly.position.z+=(mz*c - mx*s)*speed;
+    moving=true;
+  } else moving=false;
+  // Snäppvridning 45° med cooldown, runt huvudet så man står kvar
+  snapCooldown-=dt;
+  if(Math.abs(turn)>0.6&&snapCooldown<=0){
+    snapCooldown=0.35;
+    const before=new THREE.Vector3(); dolly.updateMatrixWorld(true); camera.getWorldPosition(before);
+    dolly.rotation.y+= (turn>0?-1:1)*Math.PI/4;
+    dolly.updateMatrixWorld(true);
+    const after=new THREE.Vector3(); camera.getWorldPosition(after);
+    dolly.position.x+=before.x-after.x; dolly.position.z+=before.z-after.z;
+  } else if(Math.abs(turn)<0.3&&snapCooldown>0.0){ /* släpp krävs ej, cooldown räcker */ }
+}
+
+/* ---------- Flöde och UI ---------- */
+let pendingRole=null;
+$('btnHost').onclick=()=>{ audio(); pendingRole='host'; hide('startScreen'); openCreate(); };
+$('btnJoin').onclick=()=>{ audio(); pendingRole='guest'; hide('startScreen'); openCreate(); };
+$('btnBackFromCreate').onclick=()=>{ stopPreview(); hide('createScreen'); show('startScreen'); };
+$('btnDoneCreate').onclick=()=>{
+  myCfg.name=($('nameInput').value.trim()||'Spelare'+Math.floor(Math.random()*90+10)).slice(0,12);
+  stopPreview(); hide('createScreen');
+  if(pendingRole==='host') show('worldScreen'); else show('joinScreen');
+};
+$('btnBackFromWorld').onclick=()=>{ hide('worldScreen'); openCreate(); };
+$('btnBackFromJoin').onclick=()=>{ hide('joinScreen'); openCreate(); };
+document.querySelectorAll('#worldScreen .worldCard').forEach(card=>{
+  card.onclick=()=>{
+    hide('worldScreen');
+    buildWorld(card.dataset.world,Math.floor(Math.random()*1e9));
+    startHost();
+  };
+});
+$('btnConnect').onclick=()=>{
+  const code=$('codeInput').value.trim().toLowerCase();
+  if(code.length!==4){ $('joinErr').textContent='Koden är 4 tecken.'; return; }
+  $('joinErr').textContent='Ansluter...';
+  startGuest(code);
+};
+document.querySelectorAll('#worldBar .btn').forEach(b=>{ b.onclick=()=>hostSetWorld(b.dataset.world); });
+document.querySelectorAll('#emoteRow .btn').forEach((b,i)=>{
+  if(!isTouch)b.textContent=(i+1)+' '+b.textContent;
+  b.onclick=()=>{ doEmote(b.dataset.emote); toggleEmotePanel(false); };
+});
+$('btnSend').onclick=()=>{ sendChat($('chatInput').value); $('chatInput').value=''; if(!isTouch)closeChat(false); };
+$('chatInput').addEventListener('keydown',e=>{
+  if(e.key==='Enter'){ sendChat($('chatInput').value); $('chatInput').value=''; closeChat(true); }
+  else if(e.key==='Escape'){ $('chatInput').value=''; closeChat(true); }
+  e.stopPropagation();
+});
+$('vrBtn').onclick=startVR;
+
+function enterWorld(asGuest){
+  hide('joinScreen'); hide('worldScreen');
+  show('hud');
+  $('worldBar').classList.toggle('hidden',!isHost);
+  $('vrBtn').classList.toggle('hidden',!vrBtnVisible()); // "STARTA I VR" om webbläsaren har WebXR
+  if(!isTouch){ $('chatRow').classList.add('hidden'); $('emoteRow').classList.add('hidden'); }
+  addPlayer(myId,myCfg); // egen post för räknare/relä (kroppen visas ej för en själv)
+  players[myId].group.visible=false;
+  inWorld=true;
+  dolly.position.set(0,0,0);
+  refreshHUD();
+}
+/* Alla HUD-ytor (2D-topplist + VR-handled) ritas alltid om ihop, så de aldrig visar olika saker */
+function refreshHUD(){ updateTopBar(); redrawWrist(); }
+function updateTopBar(){
+  const netCol = netStatus==='online' ? '#9f9' : (netStatus==='ansluter'||netStatus==='ateransluter') ? '#fd9' : '#f99';
+  $('topBar').innerHTML='<b>Rumskod: '+(roomCode?roomCode.toUpperCase():'–')+'</b>'+
+    ' <span style="opacity:.5;font-size:12px;">v'+VERSION+'</span><br>'+
+    'Spelare: '+Object.keys(players).length+' / '+MAX_PLAYERS+' &nbsp;·&nbsp; '+(WORLD_NAMES[worldId]||'')+'<br>'+
+    'Nätverk: <span style="color:'+netCol+'">'+netText()+'</span>'+
+    (!isTouch?'<br><span style="opacity:.75">Klicka för att låsa musen · T = chatt · E = emotes (1–5)</span>':'');
+}
+
+/* ---------- Karaktärsskaparens UI + förhandsvisning ---------- */
+function pillRow(el,opts,key){
+  el.innerHTML='';
+  opts.forEach(([val,label])=>{
+    const b=document.createElement('button'); b.className='pill'+(myCfg[key]===val?' sel':''); b.textContent=label;
+    b.onclick=()=>{ myCfg[key]=val; pillRow(el,opts,key); previewDirty=true; };
+    el.appendChild(b);
+  });
+}
+function colorRow(){
+  const el=$('colorRow'); el.innerHTML='';
+  COLORS.forEach((c,i)=>{
+    const s=document.createElement('div'); s.className='swatch'+(myCfg.color===i?' sel':'');
+    s.style.background='#'+c.toString(16).padStart(6,'0');
+    s.onclick=()=>{ myCfg.color=i; colorRow(); previewDirty=true; };
+    el.appendChild(s);
+  });
+}
+let pScene=null,pCam=null,pRend=null,pAvatar=null,previewDirty=true,previewRunning=false,previewRotY=0;
+function openCreate(){
+  show('createScreen');
+  colorRow();
+  pillRow($('headRow'),HEADS,'head'); pillRow($('eyeRow'),EYES,'eyes');
+  pillRow($('hatRow'),HATS,'hat'); pillRow($('accRow'),ACCS,'acc');
+  if(!pRend){
+    pRend=new THREE.WebGLRenderer({canvas:$('previewCanvas'),antialias:true,alpha:true});
+    pRend.setSize(220,240,false);
+    pScene=new THREE.Scene();
+    pCam=new THREE.PerspectiveCamera(40,220/240,0.1,10); pCam.position.set(0,1.1,3.1); pCam.lookAt(0,0.95,0);
+    pScene.add(new THREE.HemisphereLight(0xffffff,0x555566,1.1));
+    const d=new THREE.DirectionalLight(0xffffff,0.6); d.position.set(2,3,2); pScene.add(d);
+    // Man snurrar själv på sin karaktär genom att dra
+    const cvs=$('previewCanvas'); cvs.style.touchAction='none'; cvs.style.cursor='grab';
+    let pd=false,px=0;
+    cvs.addEventListener('pointerdown',e=>{pd=true;px=e.clientX;cvs.setPointerCapture(e.pointerId);});
+    cvs.addEventListener('pointermove',e=>{ if(pd){ previewRotY+=(e.clientX-px)*0.02; px=e.clientX; } });
+    addEventListener('pointerup',()=>pd=false);
+  }
+  previewRunning=true; previewDirty=true;
+  requestAnimationFrame(previewLoop);
+}
+function stopPreview(){ previewRunning=false; }
+function previewLoop(t){
+  if(!previewRunning)return;
+  if(previewDirty){
+    if(pAvatar)pScene.remove(pAvatar);
+    pAvatar=makeAvatar(myCfg); pScene.add(pAvatar);
+    previewDirty=false;
+  }
+  if(pAvatar){
+    pAvatar.rotation.y=previewRotY;
+    const u=pAvatar.userData, s=Math.sin(t*0.004)*0.15;
+    u.lArm.rotation.z=s; u.rArm.rotation.z=-s;
+  }
+  pRend.render(pScene,pCam);
+  requestAnimationFrame(previewLoop);
+}
+
+/* ---------- Huvudloop (setAnimationLoop, krävs för VR) ---------- */
+const clock=new THREE.Clock();
+$('verTag').textContent='v'+VERSION;
+buildWorld('vit',42);
+renderer.setAnimationLoop(()=>{
+  const dt=Math.min(clock.getDelta(),0.05);
+  const t=performance.now();
+  if(inWorld){
+    if(renderer.xr.isPresenting){
+      vrInput(dt);
+    } else {
+      // Platt: dollyn nollställd i rotation, kameran styrs direkt
+      camera.rotation.set(pitch,0,0);
+      dolly.rotation.y=yaw;
+      let fx=0,fz=0;
+      if(keys['KeyW']||keys['ArrowUp'])fz-=1;
+      if(keys['KeyS']||keys['ArrowDown'])fz+=1;
+      if(keys['KeyA']||keys['ArrowLeft'])fx-=1;
+      if(keys['KeyD']||keys['ArrowRight'])fx+=1;
+      fx+=stickVec.x; fz+=stickVec.y;
+      const l=Math.hypot(fx,fz);
+      moving=l>0.15;
+      if(moving){
+        fx/=Math.max(1,l); fz/=Math.max(1,l);
+        const sp=(keys['ShiftLeft']?4.2:2.4)*dt;
+        const s=Math.sin(yaw),c=Math.cos(yaw);
+        dolly.position.x+=(fx*c + fz*s)*sp;
+        dolly.position.z+=(fz*c - fx*s)*sp;
+      }
+    }
+    collide();
+    // Fjärrspelare: mjuk interpolation ~10/s + gånganimation av rörelseflaggan
+    for(const id in players){
+      const p=players[id]; if(id===myId)continue;
+      const k=Math.min(1,dt*10);
+      p.group.position.x+=(p.target.x-p.group.position.x)*k;
+      p.group.position.z+=(p.target.z-p.group.position.z)*k;
+      // Avataren är byggd med ansiktet mot +z, spelaren tittar mot -z: vänd 180°
+      const wantY=p.target.ry+Math.PI;
+      let d=wantY-p.group.rotation.y;
+      while(d>Math.PI)d-=2*Math.PI; while(d<-Math.PI)d+=2*Math.PI;
+      p.group.rotation.y+=d*k;
+      const u=p.group.userData;
+      // Huvudet lutar dit spelaren tittar
+      u.headG.rotation.x+=((-(p.target.rx||0))-u.headG.rotation.x)*k;
+      const walking=!!p.mv;
+      // Lätt framåtlutning av kroppen vid gång, mjukt in och ut
+      u.body.rotation.x+=((walking?0.07:0)-u.body.rotation.x)*Math.min(1,dt*6);
+      if(walking){
+        u.phase+=dt*9;
+        const s=Math.sin(u.phase)*0.7;
+        u.lLeg.rotation.x=-s; u.rLeg.rotation.x=s;
+        p.group.position.y=Math.abs(Math.sin(u.phase))*0.04;
+        u.body.position.y=0.82; u.headG.position.y=u.hy;
+        u.headG.rotation.z*=0.9;
+      } else {
+        u.lLeg.rotation.x*=0.85; u.rLeg.rotation.x*=0.85;
+        p.group.position.y*=0.8;
+        // Idle: andning och små huvudrörelser så figuren känns levande
+        const br=Math.sin(t*0.0016+u.phase)*0.012;
+        u.body.position.y=0.82+br; u.headG.position.y=u.hy+br;
+        u.headG.rotation.z=Math.sin(t*0.0009+u.phase)*0.025;
+      }
+      if(p.hands&&(p.hands.l||p.hands.r)){
+        // VR-spelare: armarna följer handkontrollerna (spegelvänt: sändarens vänster = avatarens höger pivot)
+        aimArm(p,u.rArm,p.hands.l,'l');
+        aimArm(p,u.lArm,p.hands.r,'r');
+      } else if(p.emote&&t<p.emote.until&&(p.emote.kind==='vinka'||p.emote.kind==='dansa')){
+        emoteArms(u,p.emote.kind,t);
+      } else if(walking){
+        const s=Math.sin(u.phase)*0.7;
+        u.lArm.quaternion.set(0,0,0,1); u.rArm.quaternion.set(0,0,0,1);
+        u.lArm.rotation.x=s; u.rArm.rotation.x=-s;
+      } else {
+        u.lArm.rotation.x*=0.85; u.rArm.rotation.x*=0.85;
+        u.lArm.rotation.z=0.06*Math.sin(t*0.002+u.phase);
+        u.rArm.rotation.z=-0.06*Math.sin(t*0.002+u.phase);
+      }
+      // Pratbubblor tas bort efter en stund
+      if(p.bubble&&t>p.bubble.until){
+        p.group.remove(p.bubble.sprite);
+        p.bubble.sprite.material.map.dispose(); p.bubble.sprite.material.dispose();
+        p.bubble=null;
+      }
+    }
+  }
+  // Emoji-effekter från emotes
+  for(let i=emojiFx.length-1;i>=0;i--){
+    const f=emojiFx[i];
+    f.sp.position.y+=f.vy*dt;
+    f.sp.position.x+=(f.vx||0)*dt;
+    f.sp.scale.multiplyScalar(1+0.35*dt); // växer lite medan den tonar bort
+    f.sp.material.opacity=Math.max(0,(f.until-t)/1600);
+    if(t>f.until){ scene.remove(f.sp); f.sp.material.map.dispose(); f.sp.material.dispose(); emojiFx.splice(i,1); }
+  }
+  renderer.render(scene,camera);
+});
+</script>
+</body>
+</html>
