@@ -14,3 +14,11 @@
 - [x] test: smoke-run in CPython with mocked machine/framebuf
 - [x] docs: README with Thonny instructions
 - [x] git: commit + push to claude/cool-franklin-izolil
+
+## Fix: black screen on hardware
+- [x] debug: backlight started at 0 and only faded in from the menu -> any early stop/crash left screen black
+- [x] fix: backlight on immediately in LCD init
+- [x] fix: catch exceptions, print to Thonny shell + draw error on screen
+- [x] add: test_lcd.py minimal color-fill test with progress prints
+- [x] test: re-run mock scenarios
+- [x] git: commit + push

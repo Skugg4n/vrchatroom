@@ -60,7 +60,7 @@ class LCD(framebuf.FrameBuffer):
                        sck=Pin(10), mosi=Pin(11), miso=None)
         self.bl = PWM(Pin(13))
         self.bl.freq(1000)
-        self.backlight(0)
+        self.backlight(100)
         self._init_display()
 
     def backlight(self, percent):
@@ -209,7 +209,7 @@ def frame_wait(t0):
 MENU_ITEMS = ("1 SPELARE", "2 SPELARE", "KNAPPTEST")
 
 
-def run_menu(lcd, keys, sel=0, fade_in=False):
+def run_menu(lcd, keys, sel=0):
     stars = [[random.randint(0, W - 1), random.randint(0, H - 1),
               random.randint(1, 3)] for _ in range(50)]
     t = 0
@@ -265,8 +265,6 @@ def run_menu(lcd, keys, sel=0, fade_in=False):
         center_text(lcd, "X/Y: valj    A: starta", 220, GRAY)
         lcd.show()
 
-        if fade_in and t <= 25:
-            lcd.backlight(t * 4)
         t += 1
         frame_wait(t0)
 
@@ -497,21 +495,51 @@ def play_pong(lcd, keys, two_players):
 # ---------------------------------------------------------------
 # Huvudprogram
 # ---------------------------------------------------------------
+def show_error(lcd, e):
+    """Visar felet på skärmen så man ser vad som gick snett."""
+    import sys
+    import io
+    sys.print_exception(e)
+    if lcd is None:
+        return
+    buf = io.StringIO()
+    sys.print_exception(e, buf)
+    lcd.backlight(100)
+    lcd.fill(rgb(120, 0, 0))
+    lcd.text("FEL! Se Thonny-skalet", 4, 4, WHITE)
+    y = 20
+    for line in buf.getvalue().split("\n"):
+        while line and y < H - 8:
+            lcd.text(line[:39], 4, y, WHITE)
+            line = line[39:]
+            y += 10
+    lcd.show()
+
+
 def main():
-    lcd = LCD()
-    keys = Keys()
-    sel = 0
-    first = True
-    while True:
-        sel = run_menu(lcd, keys, sel, fade_in=first)
-        if first:
-            lcd.backlight(100)
-            first = False
-        if sel in (0, 1):
-            while play_pong(lcd, keys, two_players=(sel == 1)) == "again":
-                pass
-        else:
-            key_test(lcd, keys)
+    print("Pico Pong startar...")
+    lcd = None
+    try:
+        lcd = LCD()
+        print("Skarm OK")
+        keys = Keys()
+        sel = 0
+        while True:
+            sel = game_loop(lcd, keys, sel)
+    except KeyboardInterrupt:
+        print("Stoppad")
+    except Exception as e:
+        show_error(lcd, e)
+
+
+def game_loop(lcd, keys, sel):
+    sel = run_menu(lcd, keys, sel)
+    if sel in (0, 1):
+        while play_pong(lcd, keys, two_players=(sel == 1)) == "again":
+            pass
+    else:
+        key_test(lcd, keys)
+    return sel
 
 
 main()
