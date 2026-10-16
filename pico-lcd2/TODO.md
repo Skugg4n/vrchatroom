@@ -22,3 +22,7 @@
 - [x] add: test_lcd.py minimal color-fill test with progress prints
 - [x] test: re-run mock scenarios
 - [x] git: commit + push
+
+## Diagnose: test_lcd.py runs but screen fully black (no backlight)
+- [x] add: test_knappar.py (onboard LED blink, backlight blink, key prints) to verify Pico <-> LCD board contact
+- [x] git: commit + push
