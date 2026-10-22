@@ -15,7 +15,26 @@ Dessutom **Klocka** och **Knapptest**. Rekord sparas på Picon i filen `rekord.j
 4. Spara den på Picon som `main.py` (*Arkiv → Spara som → Raspberry Pi Pico*).
    Stäng Thonny och koppla in Picon igen så startar arcaden av sig själv.
 
-## Knappar
+## 2-knappsläge (bara KEY0 och KEY1)
+
+Om KEY2 och KEY3 inte fungerar (till exempel om de har lossnat) är `TWO_KEYS = True` högst upp i `main.py`.
+Sätt den till `False` när alla fyra knapparna fungerar igen.
+
+| Vad | Så gör du |
+|-----|-----------|
+| Bläddra i menyn | 0 = föregående, 1 = nästa |
+| Välj / starta | tryck 0 och 1 samtidigt (kort) |
+| Gå ur ett spel | håll in 0 och 1 i drygt en sekund |
+| Spela igen / till menyn (efter game over) | 0 / 1 |
+| Pong, 2 spelare | en knapp var: paddeln åker hela tiden, tryck för att vända |
+| Breakout | 0/1 styr, bollen skjuts iväg av sig själv (eller 0+1) |
+| Tetris | 0/1 flyttar, 0+1 vrider |
+| Simon | två rutor i stället för fyra |
+| Klockan | 0/1 minus/plus, 0+1 nästa/klar, håll 0+1 = hoppa över |
+
+Paus finns inte i 2-knappsläget.
+
+## Knappar (alla fyra fungerar)
 
 Siffrorna är knapparnas nummer på kortet (KEY0–KEY3), samma som visas i Knapptest och på skärmen.
 De översta knapparna, KEY0 och KEY1, används till det man gör mest.

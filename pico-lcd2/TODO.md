@@ -79,3 +79,14 @@
 - [x] KLOCKA card to set time manually
 - [x] fix: Stack falling-piece cleanup used wrong sign
 - [x] chore: remove committed __pycache__, add .gitignore
+
+## 2-key mode (KEY2/KEY3 fell off)
+- [x] keys: TWO_KEYS flag; virtual taps (on release, no chord), chord press/tap, long hold both = exit
+- [x] ui: menu/choose/result/time setup/keytest use 0/1 + chord, hints adapt
+- [x] game: Pong 2P one-button paddles (press = change direction)
+- [x] game: Breakout auto-launch / chord launch
+- [x] game: Tetris tap-move + repeat, chord = rotate
+- [x] game: Simon with 2 pads
+- [x] portrait: start screen hints adapt
+- [x] test: mock-run with only KEY0/KEY1
+- [x] docs + git push

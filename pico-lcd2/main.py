@@ -49,9 +49,21 @@ PONG_P1 = (0, 2)          # 2 spelare, spelare 1: upp, ner
 PONG_P2 = (1, 3)          # 2 spelare, spelare 2: upp, ner
 SNAKE_LEFT, SNAKE_RIGHT = 0, 1
 
+# 2-KNAPPSLÄGE: bara KEY0 och KEY1 används (om KEY2/KEY3 är trasiga).
+#   0 / 1             = vänster / höger, föregående / nästa
+#   0 + 1 samtidigt   = välj, starta, vrid
+#   håll 0 + 1 länge  = gå ur spelet
+# Sätt till False när alla fyra knapparna fungerar igen.
+TWO_KEYS = True
+LONG_FRAMES = 40          # håll 0+1 så här länge (40 = ca 1,3 s) för att gå ur
+
 EXIT_FRAMES = 8           # så länge alla fyra måste hållas (8 = ca 0,25 s)
 FRAME_MS = 33             # ca 30 bilder per sekund
 SCORE_FILE = "rekord.json"
+
+
+SEL_TXT = "0+1" if TWO_KEYS else str(K_A)          # välj
+EXIT_TXT = "hall 0+1" if TWO_KEYS else "alla 4"     # gå ur
 
 
 def rgb(r, g, b):
@@ -185,13 +197,60 @@ class Keys:
         self.prev = [False] * 4
         self.cnt = [0] * 4
         self.all_cnt = 0
+        # För 2-knappsläget
+        self.both_cnt = 0
+        self.chorded = False      # har båda varit nere under det här trycket?
+        self.chord_edge = False   # båda gick ner just nu
+        self.chord_tap = False    # kort tryck på båda, just släppt
+        self.tapped = [False, False]
 
     def update(self):
         self.prev = self.now
         self.now = [p.value() == 0 for p in self.pins]
+        old = self.cnt[:]
         for i in range(4):
             self.cnt[i] = self.cnt[i] + 1 if self.now[i] else 0
         self.all_cnt = self.all_cnt + 1 if all(self.now) else 0
+        both = self.now[0] and self.now[1]
+        was_both = self.both_cnt > 0
+        self.chord_edge = both and not was_both
+        self.chord_tap = was_both and not both and self.both_cnt < LONG_FRAMES
+        if both:
+            self.chorded = True
+        for i in (0, 1):
+            # Ett "tryck" räknas när knappen släpps, om den andra inte
+            # också var nere och den inte hölls inne länge (upprepning).
+            self.tapped[i] = self.prev[i] and not self.now[i] \
+                and not self.chorded and old[i] <= 8
+        self.both_cnt = self.both_cnt + 1 if both else 0
+        if not self.now[0] and not self.now[1]:
+            self.chorded = False
+
+    # --- Handlingar som fungerar i både 4- och 2-knappsläget ---
+    def sel(self):
+        """Välj / ok / starta."""
+        return self.chord_tap if TWO_KEYS else self.pressed(K_A)
+
+    def back(self):
+        """Tillbaka / paus (finns inte i 2-knappsläget)."""
+        return False if TWO_KEYS else self.pressed(K_B)
+
+    def prev_(self):
+        return self.tapped[0] if TWO_KEYS else self.pressed(K_X)
+
+    def next_(self):
+        return self.tapped[1] if TWO_KEYS else self.pressed(K_Y)
+
+    def step(self, k, delay=8, rate=2):
+        """Flytta ett steg, upprepas om knappen hålls inne."""
+        if not TWO_KEYS:
+            return self.repeat(k, delay, rate)
+        c = self.cnt[k]
+        return self.tapped[k] or (c > delay and not self.chorded
+                                   and (c - delay) % rate == 0)
+
+    def rotate(self):
+        return self.chord_edge if TWO_KEYS else self.pressed(K_A)
 
     def held(self, k):
         return self.now[k]
@@ -208,7 +267,9 @@ class Keys:
         return any(self.now)
 
     def exit_requested(self):
-        """Alla fyra knapparna nere en stund = gå ur spelet."""
+        """Alla fyra knapparna (eller 0+1 länge) = gå ur spelet."""
+        if TWO_KEYS:
+            return self.both_cnt >= LONG_FRAMES
         return self.all_cnt >= EXIT_FRAMES
 
     def wait_release(self):
@@ -427,9 +488,10 @@ def result_screen(lcd, keys, title, big, col, info="", party=False):
         t0 = time.ticks_ms()
         keys.update()
         if t > 10:
-            if keys.pressed(K_A):
+            if (keys.tapped[0] if TWO_KEYS else keys.pressed(K_A)):
                 return True
-            if keys.pressed(K_B) or keys.exit_requested():
+            if (keys.tapped[1] if TWO_KEYS else keys.pressed(K_B)) \
+                    or keys.exit_requested():
                 return False
         lcd.load_bg()
         stars.draw(lcd)
@@ -446,7 +508,10 @@ def result_screen(lcd, keys, title, big, col, info="", party=False):
                     center_text(lcd, info, 156, YELLOW, 2)
             else:
                 center_text(lcd, info, 160, GRAY)
-        center_text(lcd, "%d: spela igen    %d: meny" % (K_A, K_B), 212, GRAY)
+        if TWO_KEYS:
+            center_text(lcd, "0: spela igen    1: meny", 212, GRAY)
+        else:
+            center_text(lcd, "%d: spela igen    %d: meny" % (K_A, K_B), 212, GRAY)
         lcd.show()
         t += 1
         frame_wait(t0)
@@ -462,13 +527,13 @@ def choose(lcd, keys, title, options, accent):
     while True:
         t0 = time.ticks_ms()
         keys.update()
-        if keys.pressed(K_X):
+        if keys.prev_():
             sel = (sel - 1) % len(options)
-        if keys.pressed(K_Y):
+        if keys.next_():
             sel = (sel + 1) % len(options)
-        if keys.pressed(K_A):
+        if keys.sel():
             return sel
-        if keys.pressed(K_B):
+        if keys.back() or keys.exit_requested():
             return None
         lcd.load_bg()
         stars.draw(lcd)
@@ -482,8 +547,11 @@ def choose(lcd, keys, title, options, accent):
                 center_text(lcd, item, y, BG, 2)
             else:
                 center_text(lcd, item, y, WHITE, 2)
-        center_text(lcd, "%d/%d: valj  %d: ok  %d: tillbaka"
-                    % (K_X, K_Y, K_A, K_B), 222, GRAY)
+        if TWO_KEYS:
+            center_text(lcd, "0/1: valj  0+1: ok  hall: tillbaka", 222, GRAY)
+        else:
+            center_text(lcd, "%d/%d: valj  %d: ok  %d: tillbaka"
+                        % (K_X, K_Y, K_A, K_B), 222, GRAY)
         lcd.show()
         t += 1
         frame_wait(t0)
@@ -518,6 +586,7 @@ def play_pong(lcd, keys, two_players):
     serve_dir = random.choice((-1, 1))
     cpu_err = 0
     cpu_speed = 3.6
+    ldir, rdir = 1, -1
 
     keys.wait_release()
     while True:
@@ -528,17 +597,32 @@ def play_pong(lcd, keys, two_players):
         if not two_players and keys.pressed(K_B) and pause_screen(lcd, keys):
             return False
 
-        up_k, down_k = PONG_P1 if two_players else PONG_SOLO
-        if keys.held(up_k):
-            ly -= 6
-        if keys.held(down_k):
-            ly += 6
-        if two_players:
+        if two_players and TWO_KEYS:
+            # En knapp per spelare: paddeln åker hela tiden, tryck = vänd
+            if keys.pressed(0):
+                ldir = -ldir
+            if keys.pressed(1):
+                rdir = -rdir
+            ly += 5 * ldir
+            ry += 5 * rdir
+            if ly <= 0 or ly >= H - PH:
+                ldir = -ldir
+            if ry <= 0 or ry >= H - PH:
+                rdir = -rdir
+        elif two_players:
+            if keys.held(PONG_P1[0]):
+                ly -= 6
+            if keys.held(PONG_P1[1]):
+                ly += 6
             if keys.held(PONG_P2[0]):
                 ry -= 6
             if keys.held(PONG_P2[1]):
                 ry += 6
         else:
+            if keys.held(PONG_SOLO[0]):
+                ly -= 6
+            if keys.held(PONG_SOLO[1]):
+                ly += 6
             if vx > 0:
                 target = by + BS / 2 - PH / 2 + cpu_err
             else:
@@ -624,7 +708,10 @@ def play_pong(lcd, keys, two_players):
             for i, (tx, ty) in enumerate(trail):
                 lcd.fill_rect(tx + 1, ty + 1, BS - 2, BS - 2, TRAIL_COLS[i])
             lcd.fill_rect(int(bx), int(by), BS, BS, WHITE)
-        if two_players:
+        if two_players and TWO_KEYS:
+            lcd.text("0: vand", lx + 12, H - 12, DIM)
+            lcd.text("1: vand", rx - 62, H - 12, DIM)
+        elif two_players:
             lcd.text("%d/%d" % PONG_P1, lx + 12, H - 12, DIM)
             lcd.text("%d/%d" % PONG_P2, rx - 34, H - 12, DIM)
         else:
@@ -802,6 +889,7 @@ def play_breakout(lcd, keys):
     speed = 4.0
     parts = []
     banner = 45
+    wait = 0
     t = 0
 
     def hit_bricks(x, y):
@@ -837,7 +925,11 @@ def play_breakout(lcd, keys):
 
         if attached:
             bx, by = px + PAD_W / 2 - BS / 2, PAD_Y - BS
-            if keys.pressed(K_A) and banner == 0:
+        else:
+            wait = 0
+        if attached:
+            wait += 1
+            if (keys.rotate() or (TWO_KEYS and wait > 45)) and banner == 0:
                 attached = False
                 ang = random.uniform(-0.4, 0.4)
                 vx = speed * math.sin(ang)
@@ -907,7 +999,7 @@ def play_breakout(lcd, keys):
         if banner > 0:
             center_text(lcd, "NIVA %d" % level, 120, YELLOW, 3)
         elif attached and (t // 10) % 2 == 0:
-            center_text(lcd, "%d: skjut  %d/%d: styr" % (K_A, K_X, K_Y), 150, GRAY)
+            center_text(lcd, "%s: skjut  %d/%d: styr" % (SEL_TXT, K_X, K_Y), 150, GRAY)
         lcd.show()
         t += 1
         frame_wait(t0)
@@ -1043,7 +1135,7 @@ def play_flappy(lcd, keys):
         else:
             shadow_text(lcd, "FLAPPY", 30, YELLOW, 4)
             if (t // 10) % 2 == 0:
-                center_text(lcd, "Tryck %d for att flyga" % K_A, 160, BG)
+                center_text(lcd, "Tryck %d for att flyga" % K_X, 160, BG)
         lcd.show()
 
         if dead:
@@ -1116,8 +1208,9 @@ def tetris_bg(lcd):
     lcd.text("RADER", 10, 80, GRAY)
     lcd.text("NIVA", 10, 130, GRAY)
     lcd.text("%d/%d flytta" % (K_X, K_Y), 4, 190, DIM)
-    lcd.text("%d vrid" % K_A, 4, 202, DIM)
-    lcd.text("%d snabbare" % K_B, 4, 214, DIM)
+    lcd.text("%s vrid" % SEL_TXT, 4, 202, DIM)
+    if not TWO_KEYS:
+        lcd.text("%d snabbare" % K_B, 4, 214, DIM)
 
 
 @native
@@ -1163,11 +1256,11 @@ def play_tetris(lcd, keys):
         keys.update()
         if keys.exit_requested():
             return False
-        if keys.repeat(K_X) and fits(cells, px - 1, py):
+        if keys.step(K_X, 7) and fits(cells, px - 1, py):
             px -= 1
-        if keys.repeat(K_Y) and fits(cells, px + 1, py):
+        if keys.step(K_Y, 7) and fits(cells, px + 1, py):
             px += 1
-        if keys.pressed(K_A) and cur != 1:
+        if keys.rotate() and cur != 1:
             r = tuple((-cy, cx) for cx, cy in cells)
             for dx in (0, -1, 1, -2, 2):
                 if fits(r, px + dx, py):
@@ -1393,7 +1486,7 @@ def play_dino(lcd, keys):
         else:
             shadow_text(lcd, "DINO", 60, GREEN, 5)
             if (t // 10) % 2 == 0:
-                center_text(lcd, "Tryck %d for att hoppa" % K_A, 130, WHITE)
+                center_text(lcd, "Tryck %d for att hoppa" % K_X, 130, WHITE)
         lcd.show()
         t += 1
         frame_wait(t0)
@@ -1414,15 +1507,22 @@ def game_simon(lcd, keys):
         pass
 
 
+SIMON_PADS = 2 if TWO_KEYS else 4
+
+
 def draw_simon(lcd, lit, msg, rnd, msg_col=WHITE):
     lcd.load_bg()
-    for k in range(4):
-        x, y = SIMON_POS[k]
+    for k in range(SIMON_PADS):
+        if TWO_KEYS:                      # två stora rutor bredvid varandra
+            x, y, w, h = 24 + k * 146, 46, 126, 170
+        else:
+            x, y = SIMON_POS[k]
+            w, h = 120, 80
         on = k == lit
         if on:
-            lcd.fill_rect(x - 4, y - 4, 128, 88, WHITE)
-        lcd.fill_rect(x, y, 120, 80, SIMON_ON[k] if on else SIMON_OFF[k])
-        center_text(lcd, str(k), y + 28, BG if on else SIMON_ON[k], 3, cx=x + 60)
+            lcd.fill_rect(x - 4, y - 4, w + 8, h + 8, WHITE)
+        lcd.fill_rect(x, y, w, h, SIMON_ON[k] if on else SIMON_OFF[k])
+        center_text(lcd, str(k), y + h // 2 - 12, BG if on else SIMON_ON[k], 3, cx=x + w // 2)
     center_text(lcd, msg, 16, msg_col, 2)
     lcd.text("RUNDA %d" % rnd, 4, 228, GRAY)
     lcd.text("REKORD %d" % SCORES.get("simon", 0), 220, 228, GRAY)
@@ -1446,7 +1546,7 @@ def play_simon(lcd, keys):
         return False
 
     while True:
-        seq.append(random.randint(0, 3))
+        seq.append(random.randint(0, SIMON_PADS - 1))
         rnd = len(seq)
         if wait_frames(20, -1, "TITTA...", rnd, GRAY):
             return False
@@ -1464,7 +1564,7 @@ def play_simon(lcd, keys):
             keys.update()
             if keys.exit_requested():
                 return False
-            for k in range(4):
+            for k in range(SIMON_PADS):
                 if keys.pressed(k):
                     lit, lit_t = k, 6
                     if k == seq[idx]:
@@ -1501,7 +1601,7 @@ def game_keytest(lcd, keys):
     while True:
         t0 = time.ticks_ms()
         keys.update()
-        if keys.all_cnt > 30:
+        if (keys.both_cnt if TWO_KEYS else keys.all_cnt) > 30:
             return
         lcd.fill(BG)
         center_text(lcd, "KNAPPTEST", 14, YELLOW, 3)
@@ -1514,7 +1614,7 @@ def game_keytest(lcd, keys):
             big_text(lcd, "KEY%d" % i, 30, y + 6, col, 2)
             lcd.text("GP%d" % KEY_PINS[i], 106, y + 10, col)
             lcd.text(ROLES.get(i, ""), 150, y + 10, col)
-        center_text(lcd, "Hall alla 4 i 1 sek: tillbaka", 222, GRAY)
+        center_text(lcd, "Hall %s i 1 sek: tillbaka" % ("0+1" if TWO_KEYS else "alla 4"), 222, GRAY)
         lcd.show()
         frame_wait(t0)
 
@@ -1713,7 +1813,10 @@ def v_start(lcd, keys, title, col, lines, key, L, R):
         keys.update()
         if keys.exit_requested():
             return "exit"
-        if keys.pressed(L) or keys.pressed(R):
+        if TWO_KEYS:
+            if keys.tapped[0] or keys.tapped[1]:
+                return "go"
+        elif keys.pressed(L) or keys.pressed(R):
             return "go"
         for k in range(4):
             if k != L and k != R and keys.pressed(k):
@@ -1728,8 +1831,9 @@ def v_start(lcd, keys, title, col, lines, key, L, R):
         if (t // 10) % 2 == 0:
             vtext(fb, "Tryck %d eller %d" % (L, R), 240, YELLOW, 2)
         vtext(fb, "%d = vanster   %d = hoger" % (L, R), 270, GRAY)
-        vtext(fb, "Annan knapp: stall in", 290, DIM)
-        vtext(fb, "Alla 4: tillbaka", 304, DIM)
+        if not TWO_KEYS:
+            vtext(fb, "Annan knapp: stall in", 290, DIM)
+        vtext(fb, "%s: tillbaka" % ("Hall 0+1" if TWO_KEYS else "Alla 4"), 304, DIM)
         lcd.show()
         t += 1
         frame_wait(t0)
@@ -1747,9 +1851,14 @@ def v_result(lcd, keys, key, score, col, L, R):
         t0 = time.ticks_ms()
         keys.update()
         if t > 10:
-            if keys.pressed(L):
+            if TWO_KEYS:
+                again = L < 2 and keys.tapped[L]
+                leave = R < 2 and keys.tapped[R]
+            else:
+                again, leave = keys.pressed(L), keys.pressed(R)
+            if again:
                 return True
-            if keys.pressed(R) or keys.exit_requested():
+            if leave or keys.exit_requested():
                 return False
         lcd.load_bg()
         stars.draw(fb)
@@ -2365,14 +2474,14 @@ def time_setup(lcd, keys):
     while True:
         t0 = time.ticks_ms()
         keys.update()
-        if keys.pressed(K_B) or keys.exit_requested():
+        if keys.back() or keys.exit_requested():
             return False
         lim = 24 if field == 0 else 60
-        if keys.repeat(K_Y, 8, 2):
+        if keys.step(K_Y):
             hm[field] = (hm[field] + 1) % lim
-        if keys.repeat(K_X, 8, 2):
+        if keys.step(K_X):
             hm[field] = (hm[field] - 1) % lim
-        if keys.pressed(K_A):
+        if keys.sel():
             if field == 0:
                 field = 1
             else:
@@ -2391,8 +2500,9 @@ def time_setup(lcd, keys):
             if not (sel and (t // 8) % 4 == 3):
                 big_text(lcd, txt, x, 72, col, 6)
         center_text(lcd, "%d: minus   %d: plus" % (K_X, K_Y), 150, WHITE)
-        center_text(lcd, "%d: %s" % (K_A, "nasta" if field == 0 else "klar!"), 166, WHITE)
-        center_text(lcd, "%d: hoppa over (ingen klocka)" % K_B, 196, GRAY)
+        center_text(lcd, "%s: %s" % (SEL_TXT, "nasta" if field == 0 else "klar!"), 166, WHITE)
+        center_text(lcd, "%s: hoppa over (ingen klocka)"
+                    % ("Hall 0+1" if TWO_KEYS else str(K_B)), 196, GRAY)
         center_text(lcd, "Tips: med Thonny stalls den sjalv", 222, DIM)
         lcd.show()
         t += 1
@@ -2502,7 +2612,7 @@ def run_menu(lcd, keys, sel=0):
     lcd.set_bg(draw_gradient)
     t = 0
     off = 0          # förskjutning när ett nytt kort glider in
-    hint = "%d/%d: bladdra     %d: spela" % (K_X, K_Y, K_A)
+    hint = "%d/%d: bladdra     %s: spela" % (K_X, K_Y, SEL_TXT)
     keys.wait_release()
     last_key = time.ticks_ms()
     while True:
@@ -2515,13 +2625,13 @@ def run_menu(lcd, keys, sel=0):
             lcd.set_bg(draw_gradient)
             last_key = time.ticks_ms()
             continue
-        if keys.pressed(K_X):
+        if keys.prev_():
             sel = (sel - 1) % len(GAMES)
             off = -W
-        if keys.pressed(K_Y):
+        if keys.next_():
             sel = (sel + 1) % len(GAMES)
             off = W
-        if keys.pressed(K_A):
+        if keys.sel():
             return sel
 
         g = GAMES[sel]
