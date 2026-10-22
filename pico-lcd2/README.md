@@ -11,13 +11,14 @@ Dessutom **Klocka** och **Knapptest**. Rekord sparas på Picon i filen `rekord.j
 1. Installera MicroPython för Pico 2: håll inne BOOTSEL, koppla in USB och välj i Thonny
    *Konfigurera tolk → Installera eller uppdatera MicroPython* (variant: Raspberry Pi Pico 2).
 2. Välj tolken **MicroPython (Raspberry Pi Pico)** nere till höger.
-3. Öppna `main.py` och tryck **F5** för att testa.
-4. Spara den på Picon som `main.py` (*Arkiv → Spara som → Raspberry Pi Pico*).
-   Stäng Thonny och koppla in Picon igen så startar arcaden av sig själv.
+3. Öppna `main2.py` och tryck **F5** för att testa.
+4. Spara den på Picon som `main2.py` (*Arkiv → Spara som → Raspberry Pi Pico*).
+5. Picon startar bara `main.py` av sig själv. Vill du att arcaden startar direkt när Picon får ström,
+   lägg en `main.py` på Picon som bara innehåller raden `import main2`.
 
 ## 2-knappsläge (bara KEY0 och KEY1)
 
-Om KEY2 och KEY3 inte fungerar (till exempel om de har lossnat) är `TWO_KEYS = True` högst upp i `main.py`.
+Om KEY2 och KEY3 inte fungerar (till exempel om de har lossnat) är `TWO_KEYS = True` högst upp i `main2.py`.
 Sätt den till `False` när alla fyra knapparna fungerar igen.
 
 | Vad | Så gör du |
@@ -57,7 +58,7 @@ när man håller skärmen på höjden. Valet sparas. Tryck på någon av de andr
 **Håll in alla fyra knapparna samtidigt** en kort stund för att gå ur ett spel och tillbaka till startsidan.
 I Knapptest håller du in alla fyra i en sekund.
 
-Vill du flytta om knapparna ändrar du konstanterna högst upp i `main.py`
+Vill du flytta om knapparna ändrar du konstanterna högst upp i `main2.py`
 (`K_X`, `K_Y`, `K_A`, `K_B`, `PONG_SOLO`, `PONG_P1`, `PONG_P2`, `SNAKE_LEFT`, `SNAKE_RIGHT`).
 
 ## Klocka

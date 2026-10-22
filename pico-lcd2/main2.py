@@ -4,7 +4,8 @@
 # Liggande spel: Pong, Snake, Breakout, Flappy, Tetris, Dino och Simon.
 # Stående spel: Runner, Space och Stack. Plus ett knapptest.
 # Håll in alla fyra knapparna samtidigt för att gå ur ett spel.
-# Spara som main.py på Picon i Thonny så startar den automatiskt.
+# Spara som main2.py på Picon. För att den ska starta automatiskt,
+# lägg en main.py på Picon med raden: import main2
 # OBS: Skärmens inbyggda typsnitt saknar å, ä och ö, därför skrivs
 # texten på skärmen utan dem.
 

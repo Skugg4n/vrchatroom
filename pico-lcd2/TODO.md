@@ -90,3 +90,6 @@
 - [x] portrait: start screen hints adapt
 - [x] test: mock-run with only KEY0/KEY1
 - [x] docs + git push
+
+## Rename
+- [x] git mv main.py -> main2.py, update README + header comment (autostart via main.py: import main2)
