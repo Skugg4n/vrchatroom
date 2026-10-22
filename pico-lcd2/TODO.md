@@ -40,3 +40,21 @@
 - [x] test: mock-run every game + menu, render screenshots
 - [x] docs: update README controls
 - [x] git: commit + push
+
+## Round 4: keys, speed, more games
+- [x] keys: swap roles of KEY2 and KEY3 (X=KEY3, Y=KEY2)
+- [x] keys: pong 2P -> P1 = KEY0/KEY2, P2 = KEY1/KEY3 (phone held between players)
+- [x] keys: snake steer with KEY0 (left) / KEY1 (right), pause KEY2/KEY3
+- [x] keys: on-screen hints show key numbers, generated from constants
+- [x] keys: exit = all 4 held ~0.25 s (avoid accidental exits in 2P)
+- [x] perf: overclock 250 MHz + SPI 75 MHz request (was 62.5 -> rounded down to 37.5 MHz)
+- [x] perf: cached glyph runs for big_text
+- [x] perf: background buffer (draw once, memcpy each frame) for gradients/sky/fields
+- [x] perf: micropython.native on hot draw functions (with CPython fallback)
+- [x] perf: print FPS to Thonny shell
+- [x] game: Tetris (7-bag, rotate w/ kicks, ghost, soft drop, levels)
+- [x] game: Dino runner (variable jump, cacti, birds, night sky)
+- [x] game: Simon (4-key memory game)
+- [x] test: mock-run all games + menu, screenshots
+- [x] docs: README controls table
+- [x] git: commit + push

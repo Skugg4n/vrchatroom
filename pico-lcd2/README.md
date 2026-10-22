@@ -2,7 +2,7 @@
 
 Startsida med flera spel för **Raspberry Pi Pico 2 (H)** med **Waveshare Pico-LCD-2** (2", 320x240, ST7789).
 
-Spel: **Pong** (mot datorn eller 2 spelare), **Snake**, **Breakout** och **Flappy**, plus **Knapptest**.
+Spel: **Pong** (mot datorn eller 2 spelare), **Snake**, **Breakout**, **Flappy**, **Tetris**, **Dino** och **Simon**, plus **Knapptest**.
 Rekord sparas på Picon i filen `rekord.json`.
 
 ## Kom igång med Thonny
@@ -16,17 +16,31 @@ Rekord sparas på Picon i filen `rekord.json`.
 
 ## Knappar
 
-| Knapp | Startsida | Pong (1 sp.) | Pong (2 sp.) | Snake | Breakout | Flappy |
-|-------|-----------|--------------|--------------|-------|----------|--------|
-| KEY0 (A), GP15 | spela | | P1 upp | | skjut iväg bollen | flyg |
-| KEY1 (B), GP17 | | paus | P1 ner | paus | paus | paus |
-| KEY2 (X), GP2 | föregående | upp | P2 upp | sväng vänster | vänster | flyg |
-| KEY3 (Y), GP3 | nästa | ner | P2 ner | sväng höger | höger | flyg |
+Siffrorna är knapparnas nummer på kortet (KEY0–KEY3), samma som visas i Knapptest och på skärmen.
 
-**Håll in alla fyra knapparna samtidigt** för att gå ur ett spel och tillbaka till startsidan.
+| Spel | KEY0 | KEY1 | KEY2 | KEY3 |
+|------|------|------|------|------|
+| Startsida | spela | | nästa | föregående |
+| Pong, 1 spelare | upp | paus | ner | |
+| Pong, 2 spelare | P1 upp | P2 upp | P1 ner | P2 ner |
+| Snake | sväng vänster | sväng höger | paus | paus |
+| Breakout | skjut iväg bollen | paus | höger | vänster |
+| Flappy | flyg | paus | flyg | flyg |
+| Tetris | vrid | snabbare (håll) | höger | vänster |
+| Dino | hoppa (håll = högre) | paus | hoppa | hoppa |
+| Simon | ruta 0 | ruta 1 | ruta 2 | ruta 3 |
+
+**Håll in alla fyra knapparna samtidigt** en kort stund för att gå ur ett spel och tillbaka till startsidan.
 I Knapptest håller du in alla fyra i en sekund.
 
-Om knapparna känns bakvända, ändra `K_A`, `K_B`, `K_X` och `K_Y` högst upp i `main.py`.
+Vill du flytta om knapparna ändrar du konstanterna högst upp i `main.py`
+(`K_A`, `K_B`, `K_X`, `K_Y`, `PONG_P1`, `PONG_P2`, `SNAKE_LEFT`, `SNAKE_RIGHT`).
+
+## Fart
+
+- Picon körs i 250 MHz (`OVERCLOCK_HZ`). Sätt den till `None` om något beter sig konstigt.
+- Skärmen skickas med 75 MHz SPI, och bakgrunder ritas en gång och kopieras sedan in.
+- Thonnys skal visar `FPS: ...` ungefär var 5:e sekund. Målet är 30.
 
 ## Felsökning
 

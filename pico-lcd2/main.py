@@ -1,34 +1,53 @@
 # Pico Arcade
 # Raspberry Pi Pico 2 + Waveshare Pico-LCD-2 (ST7789, 320x240)
 #
-# Spel: Pong, Snake, Breakout och Flappy, plus ett knapptest.
+# Spel: Pong, Snake, Breakout, Flappy, Tetris, Dino och Simon,
+# plus ett knapptest.
 # Håll in alla fyra knapparna samtidigt för att gå ur ett spel.
 # Spara som main.py på Picon i Thonny så startar den automatiskt.
 # OBS: Skärmens inbyggda typsnitt saknar å, ä och ö, därför skrivs
 # texten på skärmen utan dem.
 
+import machine
 from machine import Pin, SPI, PWM
 import framebuf
 import time
 import random
 import math
 import json
+import gc
+
+try:
+    import micropython
+    native = micropython.native      # snabbare maskinkod för tunga loopar
+except (ImportError, AttributeError):
+    def native(f):
+        return f
 
 W, H = 320, 240
 
+# Klockfrekvens. 250 MHz går bra på de flesta Pico 2. Sätt till None
+# om Picon beter sig konstigt, då körs den i vanliga 150 MHz.
+OVERCLOCK_HZ = 250_000_000
+SPI_HZ = 75_000_000
+
 # ---------------------------------------------------------------
-# Knappar. Byt plats på siffrorna om knapparna känns "fel" i
-# förhållande till var de sitter på kortet (kolla med KNAPPTEST).
+# Knappar. Siffran = knappens nummer på kortet (KEY0..KEY3).
 #   KEY0 = GP15, KEY1 = GP17, KEY2 = GP2, KEY3 = GP3
 # ---------------------------------------------------------------
 KEY_PINS = (15, 17, 2, 3)
-KEY_NAMES = ("KEY0", "KEY1", "KEY2", "KEY3")
-K_A = 0   # välj / starta / hoppa
+K_A = 0   # välj / starta / hoppa / vrid
 K_B = 1   # tillbaka / paus
-K_X = 2   # vänster / upp / föregående
-K_Y = 3   # höger / ner / nästa
+K_X = 3   # vänster / föregående
+K_Y = 2   # höger / nästa
 
-FRAME_MS = 33          # ca 30 bilder per sekund
+PONG_P1 = (0, 2)          # spelare 1: upp, ner
+PONG_P2 = (1, 3)          # spelare 2: upp, ner
+SNAKE_LEFT, SNAKE_RIGHT = 0, 1
+SNAKE_PAUSE = (2, 3)
+
+EXIT_FRAMES = 8           # så länge alla fyra måste hållas (8 = ca 0,25 s)
+FRAME_MS = 33             # ca 30 bilder per sekund
 SCORE_FILE = "rekord.json"
 
 
@@ -49,6 +68,8 @@ YELLOW = rgb(255, 220, 40)
 ORANGE = rgb(255, 140, 40)
 GREEN = rgb(80, 230, 90)
 RED = rgb(255, 50, 70)
+BLUE = rgb(60, 110, 255)
+PURPLE = rgb(180, 80, 255)
 SHADOW = rgb(40, 0, 70)
 
 
@@ -59,10 +80,17 @@ class LCD(framebuf.FrameBuffer):
     def __init__(self):
         self.buffer = bytearray(W * H * 2)
         super().__init__(self.buffer, W, H, framebuf.RGB565)
+        # Extra buffert för bakgrunder: ritas en gång och kopieras sedan
+        # in varje bild, vilket går mycket fortare än att rita om dem.
+        try:
+            self.bg = bytearray(W * H * 2)
+        except MemoryError:
+            self.bg = None
+        self.bg_fn = None
         self.cs = Pin(9, Pin.OUT, value=1)
         self.rst = Pin(12, Pin.OUT, value=1)
         self.dc = Pin(8, Pin.OUT, value=1)
-        self.spi = SPI(1, baudrate=62_500_000, polarity=0, phase=0,
+        self.spi = SPI(1, baudrate=SPI_HZ, polarity=0, phase=0,
                        sck=Pin(10), mosi=Pin(11), miso=None)
         self.bl = PWM(Pin(13))
         self.bl.freq(1000)
@@ -108,15 +136,29 @@ class LCD(framebuf.FrameBuffer):
         self.cmd(0x11)                              # vakna
         time.sleep_ms(120)
         self.cmd(0x29)                              # skärm på
-
-    def show(self):
+        # Hela skärmen som fönster, behöver bara sättas en gång
         self.cmd(0x2A, [0x00, 0x00, (W - 1) >> 8, (W - 1) & 0xFF])
         self.cmd(0x2B, [0x00, 0x00, (H - 1) >> 8, (H - 1) & 0xFF])
+
+    def show(self):
         self.cmd(0x2C)
         self.cs(0)
         self.dc(1)
         self.spi.write(self.buffer)
         self.cs(1)
+
+    def set_bg(self, fn):
+        """Ritar bakgrunden med fn och sparar den."""
+        self.bg_fn = fn
+        fn(self)
+        if self.bg is not None:
+            self.bg[:] = self.buffer
+
+    def load_bg(self):
+        if self.bg is not None:
+            self.buffer[:] = self.bg
+        elif self.bg_fn:
+            self.bg_fn(self)
 
 
 # ---------------------------------------------------------------
@@ -127,10 +169,15 @@ class Keys:
         self.pins = [Pin(p, Pin.IN, Pin.PULL_UP) for p in KEY_PINS]
         self.now = [False] * 4
         self.prev = [False] * 4
+        self.cnt = [0] * 4
+        self.all_cnt = 0
 
     def update(self):
         self.prev = self.now
         self.now = [p.value() == 0 for p in self.pins]
+        for i in range(4):
+            self.cnt[i] = self.cnt[i] + 1 if self.now[i] else 0
+        self.all_cnt = self.all_cnt + 1 if all(self.now) else 0
 
     def held(self, k):
         return self.now[k]
@@ -138,12 +185,17 @@ class Keys:
     def pressed(self, k):
         return self.now[k] and not self.prev[k]
 
+    def repeat(self, k, delay=7, rate=2):
+        """Som pressed, men upprepas om knappen hålls in."""
+        c = self.cnt[k]
+        return c == 1 or (c > delay and (c - delay) % rate == 0)
+
     def any_held(self):
         return any(self.now)
 
-    def all_held(self):
-        """Alla fyra knapparna nere = gå ur spelet."""
-        return all(self.now)
+    def exit_requested(self):
+        """Alla fyra knapparna nere en stund = gå ur spelet."""
+        return self.all_cnt >= EXIT_FRAMES
 
     def wait_release(self):
         self.update()
@@ -181,33 +233,52 @@ def submit_score(game, score):
     return best, False
 
 
+def record_info(game, score):
+    best, new = submit_score(game, score)
+    return ("NYTT REKORD!" if new else "Rekord: %d" % best), new
+
+
 # ---------------------------------------------------------------
 # Grafikhjälp
 # ---------------------------------------------------------------
 _glyph = bytearray(8)
 _gfb = framebuf.FrameBuffer(_glyph, 8, 8, framebuf.MONO_HLSB)
+_RUNS = {}
 
 
+def _runs(ch):
+    """Bokstavens pixlar som horisontella streck (sparas i en cache)."""
+    r = _RUNS.get(ch)
+    if r is None:
+        _gfb.fill(0)
+        _gfb.text(ch, 0, 0, 1)
+        out = []
+        for row in range(8):
+            bits = _glyph[row]
+            col = 0
+            while col < 8:
+                if bits & (0x80 >> col):
+                    s = col
+                    while col < 8 and bits & (0x80 >> col):
+                        col += 1
+                    out.append((s, row, col - s))
+                else:
+                    col += 1
+        r = tuple(out)
+        _RUNS[ch] = r
+    return r
+
+
+@native
 def big_text(fb, s, x, y, c, scale=2):
     """Skriver text i valfri storlek (det inbyggda typsnittet är 8x8)."""
     if scale == 1:
         fb.text(s, x, y, c)
         return
+    fr = fb.fill_rect
     for ch in s:
-        _gfb.fill(0)
-        _gfb.text(ch, 0, 0, 1)
-        for row in range(8):
-            bits = _glyph[row]
-            col = 0
-            while bits and col < 8:
-                if bits & (0x80 >> col):
-                    start = col
-                    while col < 8 and bits & (0x80 >> col):
-                        col += 1
-                    fb.fill_rect(x + start * scale, y + row * scale,
-                                 (col - start) * scale, scale, c)
-                else:
-                    col += 1
+        for run in _runs(ch):
+            fr(x + run[0] * scale, y + run[1] * scale, run[2] * scale, scale, c)
         x += 8 * scale
 
 
@@ -217,6 +288,11 @@ def text_w(s, scale=1):
 
 def center_text(fb, s, y, c, scale=1, cx=W // 2):
     big_text(fb, s, cx - text_w(s, scale) // 2, y, c, scale)
+
+
+def shadow_text(fb, s, y, c, scale, cx=W // 2):
+    center_text(fb, s, y + 3, SHADOW, scale, cx)
+    center_text(fb, s, y, c, scale, cx)
 
 
 def wave_text(fb, s, y, scale, cols, t, amp=3):
@@ -261,10 +337,22 @@ def draw_gradient(fb):
         fb.hline(0, y, W, GRADIENT[y])
 
 
+_fps = [0, 0]
+
+
 def frame_wait(t0):
     used = time.ticks_diff(time.ticks_ms(), t0)
     if used < FRAME_MS:
         time.sleep_ms(FRAME_MS - used)
+    # Skriv ut bilder per sekund i Thonny var 5:e sekund ungefär
+    _fps[0] += 1
+    if _fps[0] >= 150:
+        now = time.ticks_ms()
+        dt = time.ticks_diff(now, _fps[1])
+        if dt > 0:
+            print("FPS: %d" % (150000 // dt))
+        _fps[0] = 0
+        _fps[1] = now
 
 
 class Stars:
@@ -272,6 +360,7 @@ class Stars:
         self.s = [[random.randint(0, W - 1), random.randint(0, H - 1),
                    random.randint(1, 3)] for _ in range(n)]
 
+    @native
     def draw(self, fb, speed=1.0):
         for s in self.s:
             s[0] -= s[2] * speed
@@ -293,13 +382,13 @@ def pause_screen(lcd, keys):
     lcd.fill_rect(70, 74, 180, 92, BG)
     lcd.rect(70, 74, 180, 92, YELLOW)
     center_text(lcd, "PAUS", 86, YELLOW, 3)
-    center_text(lcd, "A: fortsatt", 120, WHITE)
-    center_text(lcd, "B: till menyn", 134, WHITE)
+    center_text(lcd, "%d: fortsatt" % K_A, 120, WHITE)
+    center_text(lcd, "%d: till menyn" % K_B, 134, WHITE)
     center_text(lcd, "(alla 4: meny)", 150, GRAY)
     lcd.show()
     while True:
         keys.update()
-        if keys.all_held():
+        if keys.exit_requested():
             return True
         if keys.pressed(K_A):
             keys.wait_release()
@@ -312,6 +401,7 @@ def pause_screen(lcd, keys):
 def result_screen(lcd, keys, title, big, col, info="", party=False):
     """Visas när ett spel är slut. Returnerar True = spela igen."""
     stars = Stars(40)
+    lcd.set_bg(draw_gradient)
     keys.wait_release()
     t = 0
     while True:
@@ -320,17 +410,16 @@ def result_screen(lcd, keys, title, big, col, info="", party=False):
         if t > 10:
             if keys.pressed(K_A):
                 return True
-            if keys.pressed(K_B):
+            if keys.pressed(K_B) or keys.exit_requested():
                 return False
-        draw_gradient(lcd)
+        lcd.load_bg()
         stars.draw(lcd)
         if party:
             for _ in range(40):
                 lcd.fill_rect(random.randint(0, W - 3), random.randint(0, H - 3),
                               3, 3, random.choice(RAINBOW))
         dy = int(4 * math.sin(t * 0.2))
-        center_text(lcd, title, 40 + dy + 3, SHADOW, 3)
-        center_text(lcd, title, 40 + dy, col, 3)
+        shadow_text(lcd, title, 40 + dy, col, 3)
         center_text(lcd, big, 92, WHITE, 5)
         if info:
             if party:
@@ -338,7 +427,7 @@ def result_screen(lcd, keys, title, big, col, info="", party=False):
                     center_text(lcd, info, 156, YELLOW, 2)
             else:
                 center_text(lcd, info, 160, GRAY)
-        center_text(lcd, "A: spela igen    B: meny", 212, GRAY)
+        center_text(lcd, "%d: spela igen    %d: meny" % (K_A, K_B), 212, GRAY)
         lcd.show()
         t += 1
         frame_wait(t0)
@@ -347,6 +436,7 @@ def result_screen(lcd, keys, title, big, col, info="", party=False):
 def choose(lcd, keys, title, options, accent):
     """Liten meny. Returnerar valt index eller None (B = tillbaka)."""
     stars = Stars(40)
+    lcd.set_bg(draw_gradient)
     sel = 0
     t = 0
     keys.wait_release()
@@ -361,7 +451,7 @@ def choose(lcd, keys, title, options, accent):
             return sel
         if keys.pressed(K_B):
             return None
-        draw_gradient(lcd)
+        lcd.load_bg()
         stars.draw(lcd)
         wave_text(lcd, title, 30, 4, RAINBOW, t)
         pulse = (math.sin(t * 0.2) + 1) / 2
@@ -373,14 +463,15 @@ def choose(lcd, keys, title, options, accent):
                 center_text(lcd, item, y, BG, 2)
             else:
                 center_text(lcd, item, y, WHITE, 2)
-        center_text(lcd, "X/Y: valj  A: ok  B: tillbaka", 222, GRAY)
+        center_text(lcd, "%d/%d: valj  %d: ok  %d: tillbaka"
+                    % (K_X, K_Y, K_A, K_B), 222, GRAY)
         lcd.show()
         t += 1
         frame_wait(t0)
 
 
 # ---------------------------------------------------------------
-# Spel 1: PONG
+# Spel: PONG
 # ---------------------------------------------------------------
 PW, PH = 6, 44
 PONG_BS = 6
@@ -413,25 +504,21 @@ def play_pong(lcd, keys, two_players):
     while True:
         t0 = time.ticks_ms()
         keys.update()
-        if keys.all_held():
+        if keys.exit_requested():
             return False
         if not two_players and keys.pressed(K_B) and pause_screen(lcd, keys):
             return False
 
+        if keys.held(PONG_P1[0]):
+            ly -= 6
+        if keys.held(PONG_P1[1]):
+            ly += 6
         if two_players:
-            if keys.held(K_A):
-                ly -= 6
-            if keys.held(K_B):
-                ly += 6
-            if keys.held(K_X):
+            if keys.held(PONG_P2[0]):
                 ry -= 6
-            if keys.held(K_Y):
+            if keys.held(PONG_P2[1]):
                 ry += 6
         else:
-            if keys.held(K_X):
-                ly -= 6
-            if keys.held(K_Y):
-                ly += 6
             if vx > 0:
                 target = by + BS / 2 - PH / 2 + cpu_err
             else:
@@ -517,7 +604,10 @@ def play_pong(lcd, keys, two_players):
             for i, (tx, ty) in enumerate(trail):
                 lcd.fill_rect(tx + 1, ty + 1, BS - 2, BS - 2, TRAIL_COLS[i])
             lcd.fill_rect(int(bx), int(by), BS, BS, WHITE)
-        if not two_players:
+        if two_players:
+            lcd.text("%d/%d" % PONG_P1, lx + 12, H - 12, DIM)
+            lcd.text("%d/%d" % PONG_P2, rx - 34, H - 12, DIM)
+        else:
             lcd.text("DU", lx + 12, H - 12, DIM)
             lcd.text("CPU", rx - 30, H - 12, DIM)
         lcd.show()
@@ -525,7 +615,7 @@ def play_pong(lcd, keys, two_players):
 
 
 # ---------------------------------------------------------------
-# Spel 2: SNAKE
+# Spel: SNAKE
 # ---------------------------------------------------------------
 CELL = 10
 GW, GH = 32, 22
@@ -549,12 +639,18 @@ def new_food(snake):
             return p
 
 
-def draw_snake_field(lcd, snake, d, food, t, score, color_override=None):
+def snake_bg(lcd):
     lcd.fill(BG)
     lcd.fill_rect(0, S_TOP, W, H - S_TOP, S_FIELD)
     for gy in range(0, GH, 2):
         for gx in range(0, GW, 2):
             lcd.pixel(gx * CELL + 5, S_TOP + gy * CELL + 5, S_DOT)
+    lcd.text("SNAKE", 6, 6, GREEN)
+
+
+@native
+def draw_snake_field(lcd, snake, d, food, t, score, color_override=None):
+    lcd.load_bg()
     # Äpple som pulserar
     fx, fy = food[0] * CELL + 5, S_TOP + food[1] * CELL + 5
     r = 4 if (t // 6) % 2 else 3
@@ -575,10 +671,8 @@ def draw_snake_field(lcd, snake, d, food, t, score, color_override=None):
             elif ny == sy:
                 lcd.fill_rect(min(sx, nx) * CELL + 9, S_TOP + sy * CELL + 2, 2, 6, col)
     hx, hy = snake[0]
-    for ex, ey in EYES[d]:
-        lcd.fill_rect(hx * CELL + ex, S_TOP + hy * CELL + ey, 2, 2, BG)
-    # Poängrad
-    lcd.text("SNAKE", 6, 6, GREEN)
+    for e in EYES[d]:
+        lcd.fill_rect(hx * CELL + e[0], S_TOP + hy * CELL + e[1], 2, 2, BG)
     lcd.text("POANG %d" % score, 110, 6, WHITE)
     lcd.text("REKORD %d" % SCORES.get("snake", 0), 218, 6, GRAY)
 
@@ -592,18 +686,20 @@ def play_snake(lcd, keys):
     tick = 0
     step = 5
     t = 0
+    lcd.set_bg(snake_bg)
     keys.wait_release()
     while True:
         t0 = time.ticks_ms()
         keys.update()
-        if keys.all_held():
+        if keys.exit_requested():
             return False
-        if keys.pressed(K_B) and pause_screen(lcd, keys):
+        if (keys.pressed(SNAKE_PAUSE[0]) or keys.pressed(SNAKE_PAUSE[1])) \
+                and pause_screen(lcd, keys):
             return False
         if len(turns) < 2:
-            if keys.pressed(K_X):
+            if keys.pressed(SNAKE_LEFT):
                 turns.append(-1)
-            if keys.pressed(K_Y):
+            if keys.pressed(SNAKE_RIGHT):
                 turns.append(1)
 
         tick += 1
@@ -614,14 +710,12 @@ def play_snake(lcd, keys):
             dx, dy = DIRS[d]
             hx, hy = snake[0][0] + dx, snake[0][1] + dy
             if hx < 0 or hx >= GW or hy < 0 or hy >= GH or (hx, hy) in snake[:-1]:
-                # Död: blinka ormen
-                for k in range(8):
+                for k in range(8):          # död: blinka ormen
                     draw_snake_field(lcd, snake, d, food, t, score,
                                      WHITE if k % 2 == 0 else RED)
                     lcd.show()
                     time.sleep_ms(90)
-                best, new = submit_score("snake", score)
-                info = "NYTT REKORD!" if new else "Rekord: %d" % best
+                info, new = record_info("snake", score)
                 return result_screen(lcd, keys, "GAME OVER", str(score),
                                      GREEN, info, party=new)
             snake.insert(0, (hx, hy))
@@ -633,13 +727,16 @@ def play_snake(lcd, keys):
                 snake.pop()
 
         draw_snake_field(lcd, snake, d, food, t, score)
+        if t < 60 and (t // 10) % 2 == 0:
+            center_text(lcd, "%d: vanster   %d: hoger" % (SNAKE_LEFT, SNAKE_RIGHT),
+                        200, WHITE)
         lcd.show()
         t += 1
         frame_wait(t0)
 
 
 # ---------------------------------------------------------------
-# Spel 3: BREAKOUT
+# Spel: BREAKOUT
 # ---------------------------------------------------------------
 BR_COLS, BR_ROWS = 10, 6
 BR_TOP = 30
@@ -662,6 +759,18 @@ def new_bricks(level):
     for i in range(len(b)):
         b[i] = 1 if level == 1 or random.random() > 0.15 else 0
     return b
+
+
+@native
+def draw_bricks(lcd, bricks):
+    for row in range(BR_ROWS):
+        y = BR_TOP + row * 12
+        for col in range(BR_COLS):
+            if bricks[row * BR_COLS + col]:
+                x = col * 32 + 1
+                lcd.fill_rect(x, y, 30, 10, BR_FILL[row])
+                lcd.hline(x, y, 30, BR_LIGHT[row])
+                lcd.hline(x, y + 9, 30, BR_DARK[row])
 
 
 def play_breakout(lcd, keys):
@@ -697,7 +806,7 @@ def play_breakout(lcd, keys):
     while True:
         t0 = time.ticks_ms()
         keys.update()
-        if keys.all_held():
+        if keys.exit_requested():
             return False
         if keys.pressed(K_B) and pause_screen(lcd, keys):
             return False
@@ -732,7 +841,6 @@ def play_breakout(lcd, keys):
             if hit_bricks(bx, by):
                 by -= vy
                 vy = -vy
-            # Paddeln
             if vy > 0 and PAD_Y - BS <= by <= PAD_Y + PAD_H \
                     and bx + BS >= px and bx <= px + PAD_W:
                 by = PAD_Y - BS
@@ -740,16 +848,13 @@ def play_breakout(lcd, keys):
                 ang = max(-1.0, min(1.0, rel)) * 1.05
                 vx = speed * math.sin(ang)
                 vy = -speed * math.cos(ang)
-            # Tappad boll
             if by > H:
                 lives -= 1
                 attached = True
                 if lives == 0:
-                    best, new = submit_score("breakout", score)
-                    info = "NYTT REKORD!" if new else "Rekord: %d" % best
+                    info, new = record_info("breakout", score)
                     return result_screen(lcd, keys, "GAME OVER", str(score),
                                          ORANGE, info, party=new)
-            # Ny nivå
             if not any(bricks):
                 level += 1
                 bricks = new_bricks(level)
@@ -760,17 +865,9 @@ def play_breakout(lcd, keys):
         if banner > 0:
             banner -= 1
 
-        # --- Rita ---
         lcd.fill(BG)
         lcd.hline(0, 19, W, DIM)
-        for row in range(BR_ROWS):
-            y = BR_TOP + row * 12
-            for col in range(BR_COLS):
-                if bricks[row * BR_COLS + col]:
-                    x = col * 32 + 1
-                    lcd.fill_rect(x, y, 30, 10, BR_FILL[row])
-                    lcd.hline(x, y, 30, BR_LIGHT[row])
-                    lcd.hline(x, y + 9, 30, BR_DARK[row])
+        draw_bricks(lcd, bricks)
         for p in parts[:]:
             p[0] += p[2]
             p[1] += p[3]
@@ -791,14 +888,14 @@ def play_breakout(lcd, keys):
         if banner > 0:
             center_text(lcd, "NIVA %d" % level, 120, YELLOW, 3)
         elif attached and (t // 10) % 2 == 0:
-            center_text(lcd, "A: skjut  X/Y: styr", 150, GRAY)
+            center_text(lcd, "%d: skjut  %d/%d: styr" % (K_A, K_X, K_Y), 150, GRAY)
         lcd.show()
         t += 1
         frame_wait(t0)
 
 
 # ---------------------------------------------------------------
-# Spel 4: FLAPPY
+# Spel: FLAPPY
 # ---------------------------------------------------------------
 GROUND_Y = H - 22
 BIRD_X = 70
@@ -847,6 +944,13 @@ def draw_pipe(fb, x, gap_y, x0=0, x1=W, top=0, bottom=GROUND_Y, gap=GAP, pw=PIPE
     clip_rect(fb, x - 2, b_start + 1, pw + 4, cap - 2, PIPE_COL, x0, x1)
 
 
+def flappy_bg(lcd):
+    for y in range(GROUND_Y):
+        lcd.hline(0, y, W, SKY[y])
+    lcd.fill_rect(0, GROUND_Y, W, H - GROUND_Y, GROUND_COL)
+    lcd.fill_rect(0, GROUND_Y, W, 4, GRASS)
+
+
 def play_flappy(lcd, keys):
     by = H / 2
     vy = 0.0
@@ -858,11 +962,12 @@ def play_flappy(lcd, keys):
               for _ in range(4)]
     ground = 0.0
     t = 0
+    lcd.set_bg(flappy_bg)
     keys.wait_release()
     while True:
         t0 = time.ticks_ms()
         keys.update()
-        if keys.all_held():
+        if keys.exit_requested():
             return False
         if keys.pressed(K_B) and pause_screen(lcd, keys):
             return False
@@ -889,7 +994,6 @@ def play_flappy(lcd, keys):
                 if not p[2] and p[0] + PIPE_W < BIRD_X - 9:
                     p[2] = True
                     score += 1
-                # Krock (fågelns ruta är lite mindre än bilden)
                 if p[0] - 3 < BIRD_X + 8 and p[0] + PIPE_W + 3 > BIRD_X - 8:
                     if by - 6 < p[1] - GAP // 2 or by + 6 > p[1] + GAP // 2:
                         dead = True
@@ -898,9 +1002,7 @@ def play_flappy(lcd, keys):
 
         ground = (ground + speed) % 16
 
-        # --- Rita ---
-        for y in range(GROUND_Y):
-            lcd.hline(0, y, W, SKY[y])
+        lcd.load_bg()
         for c in clouds:
             c[0] -= 0.4
             if c[0] < -60:
@@ -913,30 +1015,23 @@ def play_flappy(lcd, keys):
         for p in pipes:
             if p[0] < W:
                 draw_pipe(lcd, int(p[0]), p[1])
-        lcd.fill_rect(0, GROUND_Y, W, H - GROUND_Y, GROUND_COL)
-        lcd.fill_rect(0, GROUND_Y, W, 4, GRASS)
         for x in range(-int(ground), W, 16):
             lcd.fill_rect(x, GROUND_Y + 8, 8, 3, GROUND_DARK)
         draw_bird(lcd, BIRD_X, int(by), (t // 4) % 2 == 0 or vy < 0)
 
         if started:
-            s = str(score)
-            center_text(lcd, s, 14 + 3, SHADOW, 4)
-            center_text(lcd, s, 14, WHITE, 4)
+            shadow_text(lcd, str(score), 14, WHITE, 4)
         else:
-            center_text(lcd, "FLAPPY", 30 + 3, SHADOW, 4)
-            center_text(lcd, "FLAPPY", 30, YELLOW, 4)
+            shadow_text(lcd, "FLAPPY", 30, YELLOW, 4)
             if (t // 10) % 2 == 0:
-                center_text(lcd, "Tryck A for att flyga", 160, BG)
+                center_text(lcd, "Tryck %d for att flyga" % K_A, 160, BG)
         lcd.show()
 
         if dead:
             lcd.fill(WHITE)
             lcd.show()
-            time.sleep_ms(60)
-            best, new = submit_score("flappy", score)
-            info = "NYTT REKORD!" if new else "Rekord: %d" % best
-            time.sleep_ms(400)
+            info, new = record_info("flappy", score)
+            time.sleep_ms(450)
             return result_screen(lcd, keys, "GAME OVER", str(score),
                                  YELLOW, info, party=new)
         t += 1
@@ -944,30 +1039,462 @@ def play_flappy(lcd, keys):
 
 
 # ---------------------------------------------------------------
-# Knapptest (håll alla fyra knapparna i 1 sekund för att gå ur)
+# Spel: TETRIS
 # ---------------------------------------------------------------
-def game_keytest(lcd, keys):
+T_CELL = 11
+T_W, T_H = 10, 20
+T_X, T_Y = 105, 10
+SHAPES = (
+    ((-1, 0), (0, 0), (1, 0), (2, 0)),      # I
+    ((0, 0), (1, 0), (0, 1), (1, 1)),       # O
+    ((-1, 0), (0, 0), (1, 0), (0, -1)),     # T
+    ((-1, 0), (0, 0), (0, -1), (1, -1)),    # S
+    ((-1, -1), (0, -1), (0, 0), (1, 0)),    # Z
+    ((-1, -1), (-1, 0), (0, 0), (1, 0)),    # J
+    ((1, -1), (-1, 0), (0, 0), (1, 0)),     # L
+)
+T_RAW = ((0, 230, 255), (255, 220, 40), (180, 80, 255), (80, 230, 90),
+         (255, 50, 70), (60, 110, 255), (255, 140, 40))
+T_FILL = [rgb(*c) for c in T_RAW]
+T_LIGHT = [lerp_col(c, (255, 255, 255), 0.5) for c in T_RAW]
+T_DARK = [lerp_col(c, (0, 0, 0), 0.45) for c in T_RAW]
+T_LINE_PTS = (0, 40, 100, 300, 1200)
+T_BOARD_BG = rgb(12, 12, 32)
+
+
+def game_tetris(lcd, keys):
+    while play_tetris(lcd, keys):
+        pass
+
+
+def shuffled(n):
+    a = list(range(n))
+    for i in range(n - 1, 0, -1):
+        j = random.randint(0, i)
+        a[i], a[j] = a[j], a[i]
+    return a
+
+
+def t_cell(fb, x, y, ci):
+    fb.fill_rect(x, y, 10, 10, T_FILL[ci])
+    fb.hline(x, y, 10, T_LIGHT[ci])
+    fb.vline(x, y, 10, T_LIGHT[ci])
+    fb.hline(x, y + 9, 10, T_DARK[ci])
+    fb.vline(x + 9, y, 10, T_DARK[ci])
+
+
+def tetris_bg(lcd):
+    draw_gradient(lcd)
+    lcd.fill_rect(T_X - 3, T_Y - 3, T_W * T_CELL + 5, T_H * T_CELL + 5, CYAN)
+    lcd.fill_rect(T_X - 1, T_Y - 1, T_W * T_CELL + 1, T_H * T_CELL + 1, T_BOARD_BG)
+    for y in range(T_H):
+        for x in range(T_W):
+            lcd.pixel(T_X + x * T_CELL + 5, T_Y + y * T_CELL + 5, DIM)
+    big_text(lcd, "TETRIS", 236, 10, CYAN, 1)
+    lcd.text("NASTA", 236, 30, GRAY)
+    lcd.rect(232, 42, 76, 52, DIM)
+    lcd.text("POANG", 10, 30, GRAY)
+    lcd.text("RADER", 10, 80, GRAY)
+    lcd.text("NIVA", 10, 130, GRAY)
+    lcd.text("%d/%d flytta" % (K_X, K_Y), 4, 190, DIM)
+    lcd.text("%d vrid" % K_A, 4, 202, DIM)
+    lcd.text("%d snabbare" % K_B, 4, 214, DIM)
+
+
+@native
+def draw_board(lcd, board):
+    for y in range(T_H):
+        row = board[y]
+        for x in range(T_W):
+            v = row[x]
+            if v:
+                t_cell(lcd, T_X + x * T_CELL, T_Y + y * T_CELL, v - 1)
+
+
+def play_tetris(lcd, keys):
+    board = [bytearray(T_W) for _ in range(T_H)]
+    bag = []
+
+    def next_piece():
+        if not bag:
+            bag.extend(shuffled(7))
+        return bag.pop()
+
+    def fits(cells, px, py):
+        for cx, cy in cells:
+            x = px + cx
+            y = py + cy
+            if x < 0 or x >= T_W or y >= T_H:
+                return False
+            if y >= 0 and board[y][x]:
+                return False
+        return True
+
+    cur = next_piece()
+    nxt = next_piece()
+    cells = SHAPES[cur]
+    px, py = 4, 1
+    score = lines = 0
+    level = 1
+    fall = 0
+    lcd.set_bg(tetris_bg)
     keys.wait_release()
-    all_frames = 0
     while True:
         t0 = time.ticks_ms()
         keys.update()
-        all_frames = all_frames + 1 if keys.all_held() else 0
-        if all_frames > 30:
+        if keys.exit_requested():
+            return False
+        if keys.repeat(K_X) and fits(cells, px - 1, py):
+            px -= 1
+        if keys.repeat(K_Y) and fits(cells, px + 1, py):
+            px += 1
+        if keys.pressed(K_A) and cur != 1:
+            r = tuple((-cy, cx) for cx, cy in cells)
+            for dx in (0, -1, 1, -2, 2):
+                if fits(r, px + dx, py):
+                    cells = r
+                    px += dx
+                    break
+        soft = keys.held(K_B)
+        fall += 1
+        if fall >= (2 if soft else max(2, 22 - level * 2)):
+            fall = 0
+            if fits(cells, px, py + 1):
+                py += 1
+                if soft:
+                    score += 1
+            else:
+                # Lås fast biten
+                for cx, cy in cells:
+                    if py + cy >= 0:
+                        board[py + cy][px + cx] = cur + 1
+                full = [y for y in range(T_H) if all(board[y])]
+                if full:
+                    for k in range(6):       # blinka raderna
+                        lcd.load_bg()
+                        draw_board(lcd, board)
+                        if k % 2 == 0:
+                            for y in full:
+                                lcd.fill_rect(T_X, T_Y + y * T_CELL, T_W * T_CELL - 1, 10, WHITE)
+                        lcd.show()
+                        time.sleep_ms(50)
+                    for y in full:
+                        del board[y]
+                        board.insert(0, bytearray(T_W))
+                    score += T_LINE_PTS[len(full)] * level
+                    lines += len(full)
+                    level = lines // 10 + 1
+                cur = nxt
+                nxt = next_piece()
+                cells = SHAPES[cur]
+                px, py = 4, 1
+                if not fits(cells, px, py):
+                    info, new = record_info("tetris", score)
+                    return result_screen(lcd, keys, "GAME OVER", str(score),
+                                         CYAN, info, party=new)
+
+        # --- Rita ---
+        lcd.load_bg()
+        draw_board(lcd, board)
+        gy = py
+        while fits(cells, px, gy + 1):
+            gy += 1
+        ci = cur
+        for cx, cy in cells:                 # skuggbit som visar var den landar
+            if gy + cy >= 0:
+                lcd.rect(T_X + (px + cx) * T_CELL, T_Y + (gy + cy) * T_CELL,
+                         10, 10, T_DARK[ci])
+        for cx, cy in cells:
+            if py + cy >= 0:
+                t_cell(lcd, T_X + (px + cx) * T_CELL, T_Y + (py + cy) * T_CELL, ci)
+        for cx, cy in SHAPES[nxt]:
+            t_cell(lcd, 260 + cx * T_CELL, 66 + cy * T_CELL, nxt)
+        big_text(lcd, str(score), 10, 44, WHITE, 2)
+        big_text(lcd, str(lines), 10, 94, WHITE, 2)
+        big_text(lcd, str(level), 10, 144, YELLOW, 2)
+        lcd.show()
+        frame_wait(t0)
+
+
+# ---------------------------------------------------------------
+# Spel: DINO
+# ---------------------------------------------------------------
+D_GROUND = 196
+D_X = 40
+DINO_COL = rgb(170, 230, 170)
+CACTUS_COL = rgb(60, 170, 80)
+CACTUS_DARK = rgb(30, 110, 50)
+NIGHT = [lerp_col((5, 5, 30), (40, 20, 70), y / D_GROUND) for y in range(D_GROUND)]
+
+
+def game_dino(lcd, keys):
+    while play_dino(lcd, keys):
+        pass
+
+
+def dino_bg(lcd):
+    for y in range(D_GROUND):
+        lcd.hline(0, y, W, NIGHT[y])
+    lcd.fill_rect(0, D_GROUND, W, H - D_GROUND, rgb(25, 20, 40))
+    lcd.hline(0, D_GROUND, W, GRAY)
+    lcd.ellipse(270, 40, 16, 16, rgb(250, 245, 210), True)
+    lcd.ellipse(262, 36, 14, 14, NIGHT[36], True)
+    for i in range(40):
+        lcd.pixel((i * 73 + 11) % W, (i * 37 + 5) % (D_GROUND - 40), STAR_COLS[i % 3])
+
+
+def draw_dino(fb, x, y, t, in_air):
+    c = DINO_COL
+    fb.fill_rect(x + 10, y, 12, 8, c)            # huvud
+    fb.fill_rect(x + 13, y + 2, 2, 2, BG)        # öga
+    fb.fill_rect(x + 18, y + 6, 4, 1, BG)        # mun
+    fb.fill_rect(x + 2, y + 8, 14, 10, c)        # kropp
+    fb.fill_rect(x + 10, y + 8, 6, 3, c)
+    fb.fill_rect(x, y + 8, 3, 6, c)              # svans
+    fb.fill_rect(x + 16, y + 11, 3, 2, c)        # arm
+    if in_air:
+        fb.fill_rect(x + 4, y + 18, 3, 6, c)
+        fb.fill_rect(x + 11, y + 18, 3, 6, c)
+    elif (t // 3) % 2:
+        fb.fill_rect(x + 4, y + 18, 3, 6, c)
+        fb.fill_rect(x + 11, y + 18, 3, 3, c)
+    else:
+        fb.fill_rect(x + 4, y + 18, 3, 3, c)
+        fb.fill_rect(x + 11, y + 18, 3, 6, c)
+
+
+def draw_obstacle(fb, o, t):
+    x, w, h, kind = int(o[0]), o[1], o[2], o[3]
+    if kind == 0:                                 # kaktus
+        top = D_GROUND - h
+        for sx in range(x, x + w, 9):
+            fb.fill_rect(sx + 1, top, 6, h, CACTUS_COL)
+            fb.vline(sx + 2, top + 1, h - 2, CACTUS_DARK)
+            fb.fill_rect(sx - 2, top + h // 3, 3, 3, CACTUS_COL)
+            fb.fill_rect(sx - 2, top + h // 3 - 6, 3, 6, CACTUS_COL)
+            fb.fill_rect(sx + 7, top + h // 2, 3, 3, CACTUS_COL)
+            fb.fill_rect(sx + 7, top + h // 2 - 5, 3, 5, CACTUS_COL)
+    else:                                         # fågel
+        y = o[4]
+        fb.fill_rect(x + 4, y + 4, 14, 5, MAGENTA)
+        fb.fill_rect(x, y + 5, 5, 3, ORANGE)
+        if (t // 5) % 2:
+            fb.fill_rect(x + 7, y - 4, 6, 8, MAGENTA)
+        else:
+            fb.fill_rect(x + 7, y + 8, 6, 6, MAGENTA)
+
+
+def play_dino(lcd, keys):
+    dy = 0.0          # höjd över marken
+    vy = 0.0
+    started = False
+    dist = 0.0
+    speed = 5.0
+    obs = []
+    next_gap = 200
+    pebbles = [[random.randint(0, W), random.randint(D_GROUND + 4, H - 4)]
+               for _ in range(14)]
+    t = 0
+    lcd.set_bg(dino_bg)
+    keys.wait_release()
+    while True:
+        t0 = time.ticks_ms()
+        keys.update()
+        if keys.exit_requested():
+            return False
+        if keys.pressed(K_B) and pause_screen(lcd, keys):
+            return False
+        jump_down = keys.held(K_A) or keys.held(K_X) or keys.held(K_Y)
+        jump_press = keys.pressed(K_A) or keys.pressed(K_X) or keys.pressed(K_Y)
+        if not started:
+            if jump_press:
+                started = True
+        else:
+            if jump_press and dy == 0:
+                vy = 8.5
+            if not jump_down and vy > 3:     # kort tryck = lägre hopp
+                vy = 3
+            if dy > 0 or vy > 0:
+                dy += vy
+                vy -= 0.6
+                if dy <= 0:
+                    dy = 0
+                    vy = 0
+            speed = min(5.0 + dist / 1500, 11.0)
+            dist += speed
+            for o in obs:
+                o[0] -= speed
+            if obs and obs[0][0] < -40:
+                obs.pop(0)
+            if not obs or obs[-1][0] < W - next_gap:
+                score_now = int(dist / 10)
+                if score_now > 300 and random.random() < 0.3:
+                    obs.append([W + 10, 18, 14, 1, D_GROUND - random.choice((22, 30))])
+                else:
+                    n = random.randint(1, 3)
+                    obs.append([W + 10, n * 9, random.randint(20, 34), 0, 0])
+                next_gap = random.randint(150, 260) + int(speed * 10)
+            # Krock
+            dtop = D_GROUND - 24 - int(dy)
+            for o in obs:
+                ox = o[0]
+                if o[3] == 0:
+                    otop, obot = D_GROUND - o[2], D_GROUND
+                else:
+                    otop, obot = o[4] - 4, o[4] + 12
+                if ox + 3 < D_X + 18 and ox + o[1] - 3 > D_X + 4 \
+                        and otop + 3 < dtop + 22 and obot > dtop + 4:
+                    lcd.load_bg()
+                    for o2 in obs:
+                        draw_obstacle(lcd, o2, t)
+                    draw_dino(lcd, D_X, dtop, t, True)
+                    center_text(lcd, "AJ!", 90, RED, 4)
+                    lcd.show()
+                    time.sleep_ms(600)
+                    score = int(dist / 10)
+                    info, new = record_info("dino", score)
+                    return result_screen(lcd, keys, "GAME OVER", str(score),
+                                         GREEN, info, party=new)
+            for p in pebbles:
+                p[0] -= speed
+                if p[0] < 0:
+                    p[0] += W
+                    p[1] = random.randint(D_GROUND + 4, H - 4)
+
+        lcd.load_bg()
+        for p in pebbles:
+            lcd.fill_rect(int(p[0]), p[1], 2, 1, GRAY)
+        for o in obs:
+            draw_obstacle(lcd, o, t)
+        draw_dino(lcd, D_X, D_GROUND - 24 - int(dy), t, dy > 0 or not started)
+        if started:
+            s = "%05d" % int(dist / 10)
+            big_text(lcd, s, W - text_w(s, 2) - 8, 8, WHITE, 2)
+            lcd.text("REKORD %d" % SCORES.get("dino", 0), 8, 12, GRAY)
+        else:
+            shadow_text(lcd, "DINO", 60, GREEN, 5)
+            if (t // 10) % 2 == 0:
+                center_text(lcd, "Tryck %d for att hoppa" % K_A, 130, WHITE)
+        lcd.show()
+        t += 1
+        frame_wait(t0)
+
+
+# ---------------------------------------------------------------
+# Spel: SIMON (minnesspel med alla fyra knapparna)
+# ---------------------------------------------------------------
+# Rutornas plats på skärmen, en per knapp (KEY0..KEY3)
+SIMON_POS = ((30, 46), (170, 46), (30, 136), (170, 136))
+SIMON_RAW = ((80, 230, 90), (255, 50, 70), (255, 220, 40), (60, 140, 255))
+SIMON_ON = [rgb(*c) for c in SIMON_RAW]
+SIMON_OFF = [lerp_col(c, (0, 0, 0), 0.7) for c in SIMON_RAW]
+
+
+def game_simon(lcd, keys):
+    while play_simon(lcd, keys):
+        pass
+
+
+def draw_simon(lcd, lit, msg, rnd, msg_col=WHITE):
+    lcd.load_bg()
+    for k in range(4):
+        x, y = SIMON_POS[k]
+        on = k == lit
+        if on:
+            lcd.fill_rect(x - 4, y - 4, 128, 88, WHITE)
+        lcd.fill_rect(x, y, 120, 80, SIMON_ON[k] if on else SIMON_OFF[k])
+        center_text(lcd, str(k), y + 28, BG if on else SIMON_ON[k], 3, cx=x + 60)
+    center_text(lcd, msg, 16, msg_col, 2)
+    lcd.text("RUNDA %d" % rnd, 4, 228, GRAY)
+    lcd.text("REKORD %d" % SCORES.get("simon", 0), 220, 228, GRAY)
+    lcd.show()
+
+
+def play_simon(lcd, keys):
+    seq = []
+    lcd.set_bg(draw_gradient)
+    keys.wait_release()
+
+    def wait_frames(n, lit, msg, rnd, col=WHITE):
+        """Visar en bild i n bilder. Returnerar True om man vill gå ur."""
+        for _ in range(n):
+            t0 = time.ticks_ms()
+            keys.update()
+            if keys.exit_requested():
+                return True
+            draw_simon(lcd, lit, msg, rnd, col)
+            frame_wait(t0)
+        return False
+
+    while True:
+        seq.append(random.randint(0, 3))
+        rnd = len(seq)
+        if wait_frames(20, -1, "TITTA...", rnd, GRAY):
+            return False
+        on = max(6, 16 - rnd)
+        for k in seq:
+            if wait_frames(on, k, "TITTA...", rnd, GRAY):
+                return False
+            if wait_frames(5, -1, "TITTA...", rnd, GRAY):
+                return False
+        keys.wait_release()
+        idx = 0
+        lit, lit_t = -1, 0
+        while idx < len(seq):
+            t0 = time.ticks_ms()
+            keys.update()
+            if keys.exit_requested():
+                return False
+            for k in range(4):
+                if keys.pressed(k):
+                    lit, lit_t = k, 6
+                    if k == seq[idx]:
+                        idx += 1
+                    else:
+                        if wait_frames(25, seq[idx], "FEL!", rnd, RED):
+                            return False
+                        score = rnd - 1
+                        info, new = record_info("simon", score)
+                        return result_screen(lcd, keys, "GAME OVER", str(score),
+                                             MAGENTA, info, party=new)
+                    break
+            if lit_t > 0:
+                lit_t -= 1
+            else:
+                lit = -1
+            draw_simon(lcd, lit, "DIN TUR! %d/%d" % (idx, len(seq)), rnd, YELLOW)
+            frame_wait(t0)
+        if wait_frames(6, lit, "BRA!", rnd, GREEN):
+            return False
+        if wait_frames(14, -1, "BRA!", rnd, GREEN):
+            return False
+
+
+# ---------------------------------------------------------------
+# Knapptest (håll alla fyra knapparna i 1 sekund för att gå ur)
+# ---------------------------------------------------------------
+ROLES = {K_A: "valj/hoppa/vrid", K_B: "paus/tillbaka",
+         K_X: "vanster/foreg.", K_Y: "hoger/nasta"}
+
+
+def game_keytest(lcd, keys):
+    keys.wait_release()
+    while True:
+        t0 = time.ticks_ms()
+        keys.update()
+        if keys.all_cnt > 30:
             return
         lcd.fill(BG)
         center_text(lcd, "KNAPPTEST", 14, YELLOW, 3)
         center_text(lcd, "Tryck pa knapparna", 48, GRAY)
-        roles = ("A  valj/hoppa", "B  paus/tillbaka",
-                 "X  vanster/upp", "Y  hoger/ner")
         for i in range(4):
             y = 70 + i * 34
             on = keys.held(i)
             lcd.fill_rect(20, y, 280, 28, CYAN if on else rgb(20, 20, 50))
             col = BG if on else WHITE
-            big_text(lcd, KEY_NAMES[i], 30, y + 6, col, 2)
+            big_text(lcd, "KEY%d" % i, 30, y + 6, col, 2)
             lcd.text("GP%d" % KEY_PINS[i], 106, y + 10, col)
-            lcd.text(roles[i], 150, y + 10, col)
+            lcd.text(ROLES.get(i, ""), 150, y + 10, col)
         center_text(lcd, "Hall alla 4 i 1 sek: tillbaka", 222, GRAY)
         lcd.show()
         frame_wait(t0)
@@ -1030,6 +1557,53 @@ def pv_flappy(fb, x, y, t):
     draw_bird(fb, x + 50, y + 30 + int(8 * math.sin(t * 0.18)), (t // 4) % 2 == 0)
 
 
+PV_STACK = ((0, 6, 3), (1, 6, 3), (2, 6, 5), (3, 6, 1), (4, 6, 1), (6, 6, 2),
+            (7, 6, 4), (8, 6, 4), (9, 6, 6), (0, 5, 3), (1, 5, 5), (6, 5, 2),
+            (7, 5, 2), (8, 5, 6), (9, 5, 6), (0, 4, 0), (9, 4, 6))
+
+
+def pv_tetris(fb, x, y, t):
+    fb.fill_rect(x, y, PV_W, PV_H, T_BOARD_BG)
+    ox = x + 35
+    for cx, cy, ci in PV_STACK:
+        t_cell(fb, ox + cx * 11, y + cy * 11 + 1, ci)
+    fy = (t // 4) % 6
+    for cx, cy in SHAPES[2]:
+        if fy + cy >= 0:
+            t_cell(fb, ox + (4 + cx) * 11, y + (fy + cy) * 11 + 1, 2)
+
+
+def pv_dino(fb, x, y, t):
+    for yy in range(PV_H):
+        fb.hline(x, y + yy, PV_W, NIGHT[yy * 2])
+    gy = y + PV_H - 8
+    fb.fill_rect(x, gy, PV_W, 8, rgb(25, 20, 40))
+    fb.hline(x, gy, PV_W, GRAY)
+    cx = x + PV_W - (t * 4) % (PV_W + 30)
+    if x <= cx <= x + PV_W - 8:
+        fb.fill_rect(cx, gy - 22, 6, 22, CACTUS_COL)
+        fb.fill_rect(cx - 3, gy - 14, 3, 3, CACTUS_COL)
+        fb.fill_rect(cx + 6, gy - 10, 3, 3, CACTUS_COL)
+    # hoppa när kaktusen närmar sig
+    dist = cx - (x + 30)
+    h = 0
+    if -10 < dist < 40:
+        p = (dist + 10) / 50
+        h = int(30 * math.sin(p * math.pi))
+    draw_dino(fb, x + 30, gy - 24 - h, t, h > 0)
+
+
+def pv_simon(fb, x, y, t):
+    fb.fill_rect(x, y, PV_W, PV_H, BG)
+    lit = (t // 10) % 4
+    order = (0, 3, 1, 2)
+    for k in range(4):
+        bx = x + 30 + (k % 2) * 64
+        by = y + 4 + (k // 2) * 37
+        on = order[lit] == k
+        fb.fill_rect(bx, by, 56, 32, SIMON_ON[k] if on else SIMON_OFF[k])
+
+
 def pv_keys(fb, x, y, t):
     fb.fill_rect(x, y, PV_W, PV_H, BG)
     lit = (t // 12) % 4
@@ -1044,9 +1618,12 @@ def pv_keys(fb, x, y, t):
 # (namn, beskrivning, rekordnyckel, färg, förhandsvisning, starta)
 GAMES = (
     ("PONG", "Mot datorn/en kompis", "pong", CYAN, pv_pong, game_pong),
-    ("SNAKE", "X/Y svanger, at applen", "snake", GREEN, pv_snake, game_snake),
+    ("SNAKE", "Styr med %d och %d" % (SNAKE_LEFT, SNAKE_RIGHT), "snake", GREEN, pv_snake, game_snake),
     ("BREAKOUT", "Krossa alla stenar", "breakout", ORANGE, pv_breakout, game_breakout),
-    ("FLAPPY", "Flyg mellan ror med A", "flappy", YELLOW, pv_flappy, game_flappy),
+    ("FLAPPY", "Flyg mellan roren", "flappy", YELLOW, pv_flappy, game_flappy),
+    ("TETRIS", "Fyll hela rader", "tetris", BLUE, pv_tetris, game_tetris),
+    ("DINO", "Hoppa over kaktusar", "dino", GREEN, pv_dino, game_dino),
+    ("SIMON", "Minns ordningen", "simon", RED, pv_simon, game_simon),
     ("KNAPPTEST", "Hitta dina knappar", None, MAGENTA, pv_keys, game_keytest),
 )
 
@@ -1081,8 +1658,10 @@ def draw_card(fb, g, x, t):
 
 def run_menu(lcd, keys, sel=0):
     stars = Stars(60)
+    lcd.set_bg(draw_gradient)
     t = 0
     off = 0          # förskjutning när ett nytt kort glider in
+    hint = "%d/%d: bladdra     %d: spela" % (K_X, K_Y, K_A)
     keys.wait_release()
     while True:
         t0 = time.ticks_ms()
@@ -1098,7 +1677,7 @@ def run_menu(lcd, keys, sel=0):
 
         g = GAMES[sel]
         accent = g[3]
-        draw_gradient(lcd)
+        lcd.load_bg()
         stars.draw(lcd, 1 + abs(off) / 25)
         wave_text(lcd, "PICO ARCADE", 10, 3, RAINBOW, t)
 
@@ -1117,7 +1696,7 @@ def run_menu(lcd, keys, sel=0):
             else:
                 lcd.fill_rect(dx - 2, 206, 4, 4, DIM)
 
-        center_text(lcd, "X/Y: bladdra     A: spela", 224, GRAY)
+        center_text(lcd, hint, 224, GRAY)
         lcd.show()
         t += 1
         frame_wait(t0)
@@ -1149,14 +1728,25 @@ def show_error(lcd, e):
 
 def main():
     print("Pico Arcade startar...")
+    if OVERCLOCK_HZ:
+        try:
+            machine.freq(OVERCLOCK_HZ)
+        except Exception as e:
+            print("Kunde inte overklocka:", e)
+    print("CPU: %d MHz" % (machine.freq() // 1_000_000))
     lcd = None
     try:
+        gc.collect()
         lcd = LCD()
-        print("Skarm OK")
+        print("Skarm OK:", lcd.spi)
+        if lcd.bg is None:
+            print("Obs: inte minne till bakgrundsbuffert, kor lite langsammare")
         keys = Keys()
+        _fps[1] = time.ticks_ms()
         sel = 0
         while True:
             sel = run_menu(lcd, keys, sel)
+            gc.collect()
             GAMES[sel][5](lcd, keys)
     except KeyboardInterrupt:
         print("Stoppad")
