@@ -106,3 +106,6 @@
 
 ## Rename clock
 - [x] git mv main.py -> klocka.py, update header + README (autostart: main.py with `import klocka`)
+
+## Tetris soft drop in 2-key mode
+- [x] tap 0/1 = move one step, hold 0/1 (> TETRIS_HOLD frames) = soft drop; hint text updated

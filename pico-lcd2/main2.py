@@ -1172,6 +1172,7 @@ T_LIGHT = [lerp_col(c, (255, 255, 255), 0.5) for c in T_RAW]
 T_DARK = [lerp_col(c, (0, 0, 0), 0.45) for c in T_RAW]
 T_LINE_PTS = (0, 40, 100, 300, 1200)
 T_BOARD_BG = rgb(12, 12, 32)
+TETRIS_HOLD = 8           # 2-knappsläget: håll så här länge (bilder) = fall snabbare
 
 
 def game_tetris(lcd, keys):
@@ -1210,7 +1211,9 @@ def tetris_bg(lcd):
     lcd.text("NIVA", 10, 130, GRAY)
     lcd.text("%d/%d flytta" % (K_X, K_Y), 4, 190, DIM)
     lcd.text("%s vrid" % SEL_TXT, 4, 202, DIM)
-    if not TWO_KEYS:
+    if TWO_KEYS:
+        lcd.text("hall 0/1 snabbare", 4, 214, DIM)
+    else:
         lcd.text("%d snabbare" % K_B, 4, 214, DIM)
 
 
@@ -1257,10 +1260,20 @@ def play_tetris(lcd, keys):
         keys.update()
         if keys.exit_requested():
             return False
-        if keys.step(K_X, 7) and fits(cells, px - 1, py):
-            px -= 1
-        if keys.step(K_Y, 7) and fits(cells, px + 1, py):
-            px += 1
+        if TWO_KEYS:
+            # Kort tryck = ett steg åt sidan, håll inne = fall snabbare
+            if keys.tapped[0] and fits(cells, px - 1, py):
+                px -= 1
+            if keys.tapped[1] and fits(cells, px + 1, py):
+                px += 1
+            soft = (keys.cnt[0] > TETRIS_HOLD or keys.cnt[1] > TETRIS_HOLD) \
+                and not keys.chorded
+        else:
+            if keys.step(K_X, 7) and fits(cells, px - 1, py):
+                px -= 1
+            if keys.step(K_Y, 7) and fits(cells, px + 1, py):
+                px += 1
+            soft = keys.held(K_B)
         if keys.rotate() and cur != 1:
             r = tuple((-cy, cx) for cx, cy in cells)
             for dx in (0, -1, 1, -2, 2):
@@ -1268,7 +1281,6 @@ def play_tetris(lcd, keys):
                     cells = r
                     px += dx
                     break
-        soft = keys.held(K_B)
         fall += 1
         if fall >= (2 if soft else max(2, 22 - level * 2)):
             fall = 0

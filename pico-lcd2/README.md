@@ -47,7 +47,7 @@ Sätt den till `False` när alla fyra knapparna fungerar igen.
 | Spela igen / till menyn (efter game over) | 0 / 1 |
 | Pong, 2 spelare | en knapp var: paddeln åker hela tiden, tryck för att vända |
 | Breakout | 0/1 styr, bollen skjuts iväg av sig själv (eller 0+1) |
-| Tetris | 0/1 flyttar, 0+1 vrider |
+| Tetris | tryck 0/1 = flytta, håll in 0 eller 1 = fall snabbare, 0+1 = vrid |
 | Simon | två rutor i stället för fyra |
 | Klockan | 0/1 minus/plus, 0+1 nästa/klar, håll 0+1 = hoppa över |
 
