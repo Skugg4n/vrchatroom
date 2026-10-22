@@ -1,4 +1,21 @@
-# Pico Arcade
+# Pico Klocka (`main.py`)
+
+En minimalistisk klocka för **Raspberry Pi Pico 2 (H)** med **Waveshare Pico-LCD-2**.
+Spara `main.py` på Picon så startar klockan av sig själv när Picon får ström.
+
+- Egna rundade siffror med svaga släckta segment, nästan svart bakgrund.
+- Färgen följer dygnet: varm på morgonen, kall vit på dagen, orange på kvällen och dovt röd på natten
+  (22–07, då dämpas även skärmen).
+- Kolonet andas i takt med sekunderna och en liten prick vandrar längs en tunn linje.
+- Veckodag och datum visas när Picon har fått tiden från datorn.
+
+**Tiden:** Med Thonny inkopplat ställs klockan automatiskt. Startar Picon utan dator frågar den efter tiden:
+KEY0 = timme +1, KEY1 = minut +1 (håll inne för att gå fort). Rör inget på 5 sekunder så sparas tiden.
+Vill du ställa om tiden senare håller du in KEY0 och KEY1 i 3 sekunder. Annars behöver knapparna aldrig röras.
+
+---
+
+# Pico Arcade (`main2.py`)
 
 Startsida med flera spel för **Raspberry Pi Pico 2 (H)** med **Waveshare Pico-LCD-2** (2", 320x240, ST7789).
 

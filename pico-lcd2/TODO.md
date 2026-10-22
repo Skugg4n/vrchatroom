@@ -93,3 +93,13 @@
 
 ## Rename
 - [x] git mv main.py -> main2.py, update README + header comment (autostart via main.py: import main2)
+
+## Clock-only program (protect the remaining buttons)
+- [x] main.py = standalone clock (autostarts), arcade stays in main2.py
+- [x] time from RTC (Thonny sets it); ask only if unknown: KEY0 = hour+, KEY1 = minute+, auto-save after 5 s idle
+- [x] face: big time, blinking colon, seconds bar, Swedish weekday + date when known, stars
+- [x] night dimming (22-07), low frame rate, no overclock
+- [x] optional: hold KEY0+KEY1 3 s to set time again
+- [x] test in mock, screenshot
+- [x] docs + git push
+- [x] redesign: minimalist look (custom rounded 7-segment digits, ghost segments, time-of-day colors, breathing colon, seconds dot)
