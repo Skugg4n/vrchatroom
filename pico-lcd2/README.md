@@ -2,8 +2,9 @@
 
 Startsida med flera spel för **Raspberry Pi Pico 2 (H)** med **Waveshare Pico-LCD-2** (2", 320x240, ST7789).
 
-Spel: **Pong** (mot datorn eller 2 spelare), **Snake**, **Breakout**, **Flappy**, **Tetris**, **Dino** och **Simon**, plus **Knapptest**.
-Rekord sparas på Picon i filen `rekord.json`.
+Liggande spel: **Pong** (mot datorn eller 2 spelare), **Snake**, **Breakout**, **Flappy**, **Tetris**, **Dino** och **Simon**.
+Stående spel (vrid skärmen): **Runner**, **Space** och **Stack**.
+Dessutom **Klocka** och **Knapptest**. Rekord sparas på Picon i filen `rekord.json`.
 
 ## Kom igång med Thonny
 
@@ -17,24 +18,35 @@ Rekord sparas på Picon i filen `rekord.json`.
 ## Knappar
 
 Siffrorna är knapparnas nummer på kortet (KEY0–KEY3), samma som visas i Knapptest och på skärmen.
+De översta knapparna, KEY0 och KEY1, används till det man gör mest.
 
 | Spel | KEY0 | KEY1 | KEY2 | KEY3 |
 |------|------|------|------|------|
-| Startsida | spela | | nästa | föregående |
-| Pong, 1 spelare | upp | paus | ner | |
+| Startsida | föregående | nästa | spela | |
+| Pong, 1 spelare | upp | ner | | paus |
 | Pong, 2 spelare | P1 upp | P2 upp | P1 ner | P2 ner |
-| Snake | sväng vänster | sväng höger | paus | paus |
-| Breakout | skjut iväg bollen | paus | höger | vänster |
-| Flappy | flyg | paus | flyg | flyg |
-| Tetris | vrid | snabbare (håll) | höger | vänster |
-| Dino | hoppa (håll = högre) | paus | hoppa | hoppa |
-| Simon | ruta 0 | ruta 1 | ruta 2 | ruta 3 |
+| Snake | sväng vänster | sväng höger | | paus |
+| Breakout | vänster | höger | skjut iväg bollen | paus |
+| Flappy | flyg | flyg | flyg | paus |
+| Tetris | vänster | höger | vrid | snabbare (håll) |
+| Dino | hoppa (håll = högre) | hoppa | hoppa | paus |
+| Simon | ruta 0 (uppe till vänster) | ruta 1 (uppe till höger) | ruta 2 (nere till höger) | ruta 3 (nere till vänster) |
+
+**Stående spel:** första gången frågar spelet vilken knapp som sitter till vänster och vilken som sitter till höger
+när man håller skärmen på höjden. Valet sparas. Tryck på någon av de andra knapparna på startskärmen för att ställa in igen.
 
 **Håll in alla fyra knapparna samtidigt** en kort stund för att gå ur ett spel och tillbaka till startsidan.
 I Knapptest håller du in alla fyra i en sekund.
 
 Vill du flytta om knapparna ändrar du konstanterna högst upp i `main.py`
-(`K_A`, `K_B`, `K_X`, `K_Y`, `PONG_P1`, `PONG_P2`, `SNAKE_LEFT`, `SNAKE_RIGHT`).
+(`K_X`, `K_Y`, `K_A`, `K_B`, `PONG_SOLO`, `PONG_P1`, `PONG_P2`, `SNAKE_LEFT`, `SNAKE_RIGHT`).
+
+## Klocka
+
+- Om ingen trycker på något på startsidan i 45 sekunder visas en klocka. Ett knapptryck tar dig tillbaka.
+- När Picon är inkopplad till datorn med Thonny ställs klockan automatiskt.
+- Startar Picon utan dator frågar den vad klockan är: 0/1 minus/plus, 2 nästa/klar, 3 hoppar över (då visas ingen klocka).
+- Kortet **KLOCKA** i menyn låter dig ställa in tiden igen.
 
 ## Fart
 

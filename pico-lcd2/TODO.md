@@ -58,3 +58,24 @@
 - [x] test: mock-run all games + menu, screenshots
 - [x] docs: README controls table
 - [x] git: commit + push
+
+## Round 5: top keys for main actions, Simon fix, portrait games
+- [x] keys: KEY0/KEY1 = left/right (most used), KEY2 = select/jump/rotate, KEY3 = back/pause
+- [x] keys: pong 1P up/down on KEY0/KEY1; 2P unchanged (P1 0/2, P2 1/3)
+- [x] fix: Simon pad layout KEY2 <-> KEY3 (KEY3 bottom-left, KEY2 bottom-right)
+- [x] portrait: LCD portrait()/landscape() (MADCTL + window), 240x320 framebuffer view on same buffer
+- [x] portrait: first-run calibration of left/right key, saved in rekord.json, re-calibrate with another key
+- [x] portrait: shared start + result screens
+- [x] game: RUNNER (pseudo-3D 3-lane runner, coins, barriers, sunset temple sky)
+- [x] game: SPACE (vertical shooter, auto-fire, 2 enemy types, lives)
+- [x] game: STACK (tower stacking, cut overhang, perfect combos)
+- [x] ui: menu cards with STAENDE badge + previews
+- [x] test: mock-run all, screenshots
+- [x] docs + git push
+
+## Clock (requested mid-round)
+- [x] idle clock on start page after 45 s (dimmed backlight, any key returns)
+- [x] boot: use RTC if Thonny already set it, else ask for time (skippable = no clock)
+- [x] KLOCKA card to set time manually
+- [x] fix: Stack falling-piece cleanup used wrong sign
+- [x] chore: remove committed __pycache__, add .gitignore
