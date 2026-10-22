@@ -1,8 +1,9 @@
 # Pico Klocka
 # Raspberry Pi Pico 2 + Waveshare Pico-LCD-2 (ST7789, 320x240)
 #
-# En minimalistisk klocka. Spara som main.py på Picon så startar den
-# av sig själv när Picon får ström.
+# En minimalistisk klocka. Spara som klocka.py på Picon.
+# För att den ska starta av sig själv när Picon får ström, lägg en
+# main.py på Picon med raden: import klocka
 #
 # Tiden: När Picon är inkopplad till datorn med Thonny ställs klockan
 # automatiskt (då visas även datum). Startar Picon utan dator frågar

@@ -103,3 +103,6 @@
 - [x] test in mock, screenshot
 - [x] docs + git push
 - [x] redesign: minimalist look (custom rounded 7-segment digits, ghost segments, time-of-day colors, breathing colon, seconds dot)
+
+## Rename clock
+- [x] git mv main.py -> klocka.py, update header + README (autostart: main.py with `import klocka`)

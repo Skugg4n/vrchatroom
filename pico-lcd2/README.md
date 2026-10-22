@@ -1,7 +1,8 @@
-# Pico Klocka (`main.py`)
+# Pico Klocka (`klocka.py`)
 
 En minimalistisk klocka för **Raspberry Pi Pico 2 (H)** med **Waveshare Pico-LCD-2**.
-Spara `main.py` på Picon så startar klockan av sig själv när Picon får ström.
+Spara `klocka.py` på Picon. För att klockan ska starta av sig själv när Picon får ström,
+lägg en `main.py` på Picon som bara innehåller raden `import klocka`.
 
 - Egna rundade siffror med svaga släckta segment, nästan svart bakgrund.
 - Färgen följer dygnet: varm på morgonen, kall vit på dagen, orange på kvällen och dovt röd på natten
