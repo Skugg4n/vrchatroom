@@ -26,3 +26,17 @@
 ## Diagnose: test_lcd.py runs but screen fully black (no backlight)
 - [x] add: test_knappar.py (onboard LED blink, backlight blink, key prints) to verify Pico <-> LCD board contact
 - [x] git: commit + push
+
+## Feature: Pico Arcade launcher with several games
+- [x] refactor: shared helpers (Stars, result_screen, choose, pause_screen, clip helpers)
+- [x] save: high scores in rekord.json on the Pico
+- [x] ui: carousel start page (title, game card with live animated preview, arrows, dots, slide + warp-stars transition)
+- [x] game: Pong (mode chooser 1P/2P, reuse existing)
+- [x] game: Snake (relative turns X/Y, speeds up, record)
+- [x] game: Breakout (lives, levels, particles, record)
+- [x] game: Flappy (sky, clouds, pipes, ground scroll, record)
+- [x] keep: KNAPPTEST as last card
+- [x] input: hold all 4 keys = exit any game to start page (key test: hold 1 s)
+- [x] test: mock-run every game + menu, render screenshots
+- [x] docs: update README controls
+- [x] git: commit + push
