@@ -109,3 +109,15 @@
 
 ## Tetris soft drop in 2-key mode
 - [x] tap 0/1 = move one step, hold 0/1 (> TETRIS_HOLD frames) = soft drop; hint text updated
+
+## Bigger games as standalone files (2 keys: KEY0/KEY1)
+- [x] labyrint.py: raycasting 3D maze (80 rays, distance fog, tile edges), random mazes growing per level
+- [x] labyrint: controls hold 0/1 = turn, 0+1 tap = walk/stop, hold 0+1 = menu
+- [x] labyrint: coins, key + locked exit (lvl 3+), ghosts (lvl 4+), lives, fog-of-war minimap, score/time bonus, save
+- [x] hoppa.py: auto-run platformer, jump/double jump/hold for higher, springs, spikes, gaps, coins
+- [x] hoppa: 10 generated levels (seeded, difficulty ramp), 4 themes with parallax hills, checkpoints, 3 big coins
+- [x] hoppa: level select with saved progress, level complete screen
+- [x] test both in mock, screenshots
+- [x] docs + git push
+- [x] labyrint: widen corridors to 2 tiles (expand maze) so the 3D view shows real corridors
+- [x] hoppa: taller, clearer spikes; replace random.sample (not in MicroPython)

@@ -16,6 +16,43 @@ Vill du ställa om tiden senare håller du in KEY0 och KEY1 i 3 sekunder. Annars
 
 ---
 
+# Större spel (egna filer, bara KEY0 och KEY1)
+
+Varje spel är en egen fil. Kör med F5 i Thonny, eller lägg en `main.py` på Picon med
+`import labyrint` eller `import hoppa` så startar spelet av sig själv.
+
+## LABYRINT 3D (`labyrint.py`)
+
+Gå runt i en 3D-labyrint och hitta utgången (den lila portalen). Labyrinten blir större för varje nivå.
+
+- Samla mynt. Från nivå 3 är utgången låst tills du har hittat **nyckeln**.
+- Från nivå 4 vandrar **spöken** i gångarna. Du har 3 liv.
+- Kartan uppe till höger ritas upp där du har varit.
+- Snabbare klarad nivå ger mer bonus. Högsta nivån och rekordet sparas i `labyrint.json`.
+
+| Knapp | Gör |
+|-------|-----|
+| håll 0 / håll 1 | sväng vänster / höger |
+| 0+1 kort | börja gå / stanna |
+| håll 0+1 | paus (fortsätt eller till menyn) |
+
+## HOPPA! (`hoppa.py`)
+
+Plattformsspel med 10 banor i 4 världar: Ängen, Öknen, Natten och Slottet. Gubben springer av sig själv.
+
+- Hoppa över glapp, taggar och pelare. Röda studsmattor skjuter upp dig över höga murar.
+- Håll inne knappen för högre hopp, tryck igen i luften för **dubbelhopp**.
+- Varje bana har en **kontrollpunkt** (blå flagga) och **3 stora mynt**.
+- Klarar du en bana öppnas nästa. Framsteg och mynt sparas i `hoppa.json`.
+
+| Knapp | Gör |
+|-------|-----|
+| 0 eller 1 | hoppa (håll = högre, igen i luften = dubbelhopp) |
+| håll 0+1 | paus (fortsätt eller tillbaka till banorna) |
+| banväljaren | 0/1 bläddra, 0+1 starta |
+
+---
+
 # Pico Arcade (`main2.py`)
 
 Startsida med flera spel för **Raspberry Pi Pico 2 (H)** med **Waveshare Pico-LCD-2** (2", 320x240, ST7789).
