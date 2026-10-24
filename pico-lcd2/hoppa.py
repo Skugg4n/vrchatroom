@@ -541,8 +541,9 @@ def play(lcd, keys, level):
     t = 0
     flag_x = 0
     for i, c in enumerate(cols):
-        if FLAG in c:
-            flag_x = i * T
+        for v in c:
+            if v == FLAG:
+                flag_x = i * T
     keys.wait_release()
     while True:
         t0 = time.ticks_ms()

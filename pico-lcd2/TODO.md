@@ -130,3 +130,9 @@
 - [x] klocka: hold 0+1 3 s -> choice screen (0 = set time, 1 = menu)
 - [x] test in mock, docs, git push
 - [x] fix: klocka WHITE constant missing (found by launcher test)
+
+## Fix: MicroPython-only crashes reported from hardware
+- [x] hoppa: `FLAG in bytearray` -> NotImplementedError on MicroPython; loop instead
+- [x] labyrint: `bytearray([1]) * n` -> TypeError on MicroPython; use bytearray([1] * n)
+- [x] test: stricter mock bytearray (no `in`, no `*`) reproduces both bugs; all programs pass with it
+- [x] git push

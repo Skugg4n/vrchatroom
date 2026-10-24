@@ -334,7 +334,7 @@ def cast(fb, m, mw, px, py, dx, dy, plx, ply, zbuf, mid):
 # ---------------------------------------------------------------
 def make_maze(cw, ch, loops):
     mw, mh = cw * 2 + 1, ch * 2 + 1
-    m = bytearray([1]) * (mw * mh)
+    m = bytearray([1] * (mw * mh))
     seen = bytearray(cw * ch)
     seen[0] = 1
     m[mw + 1] = 0
@@ -366,7 +366,7 @@ def expand(maze, mw, cells):
     """Gör om labyrinten till en karta med gångar som är 2 rutor breda.
     Rum (cx, cy) blir rutorna 3*cx+1..3*cx+2, mitten är 3*cx+2."""
     n = cells * 3 + 1
-    m = bytearray([1]) * (n * n)
+    m = bytearray([1] * (n * n))
     for y in range(n):
         for x in range(n):
             xi, yi = x % 3, y % 3
