@@ -746,6 +746,8 @@ def title(lcd, keys, save):
             sel = (sel + 1) % len(opts)
         if keys.chord_tap:
             return save["level"] if opts[sel].startswith("FORT") else 1
+        if keys.long():
+            machine.soft_reset()                 # tillbaka till startmenyn
         # Bakgrund: en vy som sakta snurrar
         ang += 0.012
         dx, dy = math.cos(ang), math.sin(ang)
@@ -763,7 +765,7 @@ def title(lcd, keys, save):
                 ctext(lcd, s, y, WHITE, 2)
         lcd.fill_rect(0, 196, W, 44, BLACK)
         ctext(lcd, "Rekord: %d" % save["best"], 202, YELLOW)
-        ctext(lcd, "0/1: valj    0+1: start", 222, GRAY)
+        ctext(lcd, "0/1 valj  0+1 start  hall 0+1 meny", 222, GRAY)
         lcd.show()
         t += 1
         frame_wait(t0)

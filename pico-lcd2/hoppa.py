@@ -746,6 +746,8 @@ def select(lcd, keys, save, sel):
             sel = sel % N_LEVELS + 1
         if keys.chord_tap and sel <= save["open"]:
             return sel
+        if keys.long():
+            machine.soft_reset()                 # tillbaka till startmenyn
         th = theme_of(sel)
         top = rgb(*lerp(th[1], (0, 0, 0), 0.5))
         lcd.fill(top)
@@ -771,7 +773,8 @@ def select(lcd, keys, save, sel):
                 lcd.fill_rect(x + 16, y + 22, 16, 13, GRAY)       # hänglås
                 lcd.rect(x + 19, y + 14, 10, 10, GRAY)
         ctext(lcd, "%s - bana %d" % (theme_of(sel)[0], sel), 214, WHITE)
-        ctext(lcd, "0/1: valj   0+1: spela" if sel <= save["open"] else "Last! Klara banan innan", 228, GRAY)
+        ctext(lcd, "0/1 valj  0+1 spela  hall 0+1 meny" if sel <= save["open"]
+              else "Last! Klara banan innan", 228, GRAY)
         lcd.show()
         t += 1
         frame_wait(t0)

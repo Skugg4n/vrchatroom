@@ -1,8 +1,22 @@
+# Pico Meny (`main.py`)
+
+Startmenyn som körs när Picon får ström. Härifrån når du allt:
+**KLOCKA**, **LABYRINT 3D**, **HOPPA!** och **PICO ARCADE**.
+
+- 0 / 1 bläddrar, 0+1 (kort) startar.
+- Rör du inget på 10 sekunder startar det du valde senast (valet sparas i `meny.json`).
+- Tillbaka till menyn: håll in 0+1 i spelens egna menyer (Labyrint: titelskärmen, Hoppa: banväljaren,
+  Arcade: startsidan). I klockan håller du in 0+1 i 3 sekunder och trycker sedan KEY1.
+
+**Lägg alla dessa filer på Picon** (i Thonny: *Visa → Filer*, markera filerna, högerklicka → *Ladda upp till /*):
+`main.py`, `klocka.py`, `labyrint.py`, `hoppa.py`, `main2.py`
+
+---
+
 # Pico Klocka (`klocka.py`)
 
 En minimalistisk klocka för **Raspberry Pi Pico 2 (H)** med **Waveshare Pico-LCD-2**.
-Spara `klocka.py` på Picon. För att klockan ska starta av sig själv när Picon får ström,
-lägg en `main.py` på Picon som bara innehåller raden `import klocka`.
+Starta den från startmenyn (`main.py`). Väljer du KLOCKA där startar den av sig själv nästa gång efter 10 sekunder.
 
 - Egna rundade siffror med svaga släckta segment, nästan svart bakgrund.
 - Färgen följer dygnet: varm på morgonen, kall vit på dagen, orange på kvällen och dovt röd på natten
@@ -12,14 +26,13 @@ lägg en `main.py` på Picon som bara innehåller raden `import klocka`.
 
 **Tiden:** Med Thonny inkopplat ställs klockan automatiskt. Startar Picon utan dator frågar den efter tiden:
 KEY0 = timme +1, KEY1 = minut +1 (håll inne för att gå fort). Rör inget på 5 sekunder så sparas tiden.
-Vill du ställa om tiden senare håller du in KEY0 och KEY1 i 3 sekunder. Annars behöver knapparna aldrig röras.
+Håll in KEY0 och KEY1 i 3 sekunder, tryck sedan KEY0 för att ställa om tiden eller KEY1 för att gå till startmenyn.
 
 ---
 
 # Större spel (egna filer, bara KEY0 och KEY1)
 
-Varje spel är en egen fil. Kör med F5 i Thonny, eller lägg en `main.py` på Picon med
-`import labyrint` eller `import hoppa` så startar spelet av sig själv.
+Varje spel är en egen fil och startas från startmenyn (`main.py`). De går också att köra direkt med F5 i Thonny.
 
 ## LABYRINT 3D (`labyrint.py`)
 

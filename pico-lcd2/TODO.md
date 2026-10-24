@@ -121,3 +121,12 @@
 - [x] docs + git push
 - [x] labyrint: widen corridors to 2 tiles (expand maze) so the 3D view shows real corridors
 - [x] hoppa: taller, clearer spikes; replace random.sample (not in MicroPython)
+
+## Launcher (main.py) so all programs are reachable without editing files
+- [x] main.py: menu KLOCKA / LABYRINT 3D / HOPPA! / PICO ARCADE, 0/1 browse, 0+1 start, remembers last choice
+- [x] auto-start last choice after 10 s idle (plug in = clock starts)
+- [x] free launcher memory, then import the chosen module
+- [x] back to launcher: hold 0+1 in labyrint title, hoppa level select, arcade start page -> machine.soft_reset()
+- [x] klocka: hold 0+1 3 s -> choice screen (0 = set time, 1 = menu)
+- [x] test in mock, docs, git push
+- [x] fix: klocka WHITE constant missing (found by launcher test)

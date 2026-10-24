@@ -2646,6 +2646,8 @@ def run_menu(lcd, keys, sel=0):
             off = W
         if keys.sel():
             return sel
+        if keys.exit_requested():
+            machine.soft_reset()                 # tillbaka till startmenyn
 
         g = GAMES[sel]
         accent = g[3]

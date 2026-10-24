@@ -10,7 +10,8 @@
 # den efter tiden:
 #   KEY0 = timme +1, KEY1 = minut +1 (håll inne för att gå fort).
 #   Rör inga knappar på 5 sekunder så sparas tiden.
-# Vill du ställa om tiden senare: håll in KEY0 och KEY1 i 3 sekunder.
+# Håll in KEY0 och KEY1 i 3 sekunder för att ställa om tiden eller gå
+# tillbaka till startmenyn (main.py).
 #
 # OBS: Skärmens inbyggda typsnitt saknar å, ä och ö.
 
@@ -36,6 +37,7 @@ def rgb(r, g, b):
 
 
 BG = rgb(6, 6, 10)
+WHITE = rgb(255, 255, 255)
 GHOST = rgb(18, 18, 26)          # släckta segment, syns knappt
 HAIR = rgb(40, 40, 52)           # tunna linjer
 TEXT = rgb(120, 120, 140)        # datum och hjälptext
@@ -276,6 +278,30 @@ def set_time(lcd, h, m):
     rtc.datetime((2000, 1, 1, 5, h, m, 0, 0))
 
 
+def choose_action(lcd):
+    """0 = ställ in tiden (True), 1 = tillbaka till startmenyn.
+    Inget val på 5 s = tillbaka till klockan (False)."""
+    lcd.backlight(DAY_LIGHT)
+    while k0.value() == 0 or k1.value() == 0:
+        time.sleep_ms(20)
+    _, acc = theme(10)
+    for i in range(50):
+        if k0.value() == 0:
+            return True
+        if k1.value() == 0:
+            machine.soft_reset()                 # startar om main.py (startmenyn)
+        lcd.fill(BG)
+        spaced(lcd, "VAD VILL DU GORA?", 50, TEXT)
+        spaced(lcd, "KEY0   STALL IN TIDEN", 100, WHITE, 2)
+        spaced(lcd, "KEY1   TILL MENYN", 124, WHITE, 2)
+        lcd.hline(60, 170, 200, HAIR)
+        lcd.hline(60, 170, 200 - i * 4, acc)
+        spaced(lcd, "ANNARS TILLBAKA TILL KLOCKAN", 184, dim(TEXT, 0.6), 1)
+        lcd.show()
+        time.sleep_ms(100)
+    return False
+
+
 def clock_loop(lcd):
     both = 0
     light = None
@@ -296,11 +322,12 @@ def clock_loop(lcd):
             lcd.backlight(want)
             light = want
 
-        # Håll in båda knapparna i 3 s för att ställa om tiden
+        # Håll in båda knapparna i 3 s: ställ in tiden eller gå till menyn
         if k0.value() == 0 and k1.value() == 0:
             both += 1
             if both > 30:
-                set_time(lcd, hh, mm)
+                if choose_action(lcd):
+                    set_time(lcd, hh, mm)
                 both = 0
                 light = None
                 continue
