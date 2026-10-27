@@ -165,3 +165,9 @@
 - [x] dispatch: _spel from rekord.json -> starta.txt "ny_<spel>" -> soft reset -> only that game is loaded
 - [x] test extraction + all four games + direct F5 menu (strict mock)
 - [x] docs + git push
+
+## Fix: nothing happens after "MPY: soft reboot" when started from Thonny (F5)
+- [x] cause: soft_reset inside Thonny's raw REPL does not run main.py again
+- [x] nyaspel.py: payload stored as comment lines (no RAM while compiling), unpack by reading its own file
+- [x] start the chosen game directly by import (no soft reset); ny_meny returns its choice and frees its buffers first
+- [x] test (strict mock) + docs + git push
