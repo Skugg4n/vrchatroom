@@ -1,13 +1,28 @@
-# NYA SPEL - fyra spel i en fil för Pico Arcade
+# NYA SPEL - METEORER, TURBO, BUBBLOR och MINIGOLF i en fil
 # Raspberry Pi Pico 2 + Waveshare Pico-LCD-2 (ST7789, 320x240)
 #
-#   METEORER  Asteroids med vektorgrafik
-#   TURBO     racing i 3D
-#   BUBBLOR   bubbelskjutare
-#   MINIGOLF  9 hål
+# Alla fyra spelen får inte plats i minnet samtidigt. Därför packar den
+# här filen första gången upp sig själv till små filer på Picon
+# (ny_lib.py, ny_meteor.py, ny_turbo.py, ny_bubblor.py, ny_minigolf.py
+# och ny_meny.py). Sedan laddas bara det spel du valt.
+# Ladda bara upp den här filen. Ändra i den här filen, inte i ny_*.py,
+# de skrivs över när versionen ändras.
 #
 # Spelen startas från korten i Pico Arcade (main2.py). Kör du filen
 # direkt med F5 i Thonny får du en egen liten meny.
+
+import json
+import machine
+import gc
+
+VERSION = "2"
+FILES = {
+    'ny_lib.py': r'''# picolib - gemensam grund för spelen i Pico Arcade
+# Raspberry Pi Pico 2 + Waveshare Pico-LCD-2 (ST7789, 320x240)
+#
+# Skärm, fyra knappar, text, stjärnhimmel, rekord och gemensamma skärmar
+# (titel, paus, game over). Spelen startas från Pico Arcade och går
+# tillbaka dit med back().
 #
 # Knapparnas placering:  KEY0 uppe till vänster   KEY1 uppe till höger
 #                        KEY3 nere till vänster   KEY2 nere till höger
@@ -513,12 +528,8 @@ def result(lcd, keys, head, score_txt, key, score, col, lower_is_better=False, e
         lcd.show()
         t += 1
         frame_wait(t0)
-
-
-# ==============================================================
-# METEORER
-# ==============================================================
-# METEORER - ett Asteroids-spel för Pico Arcade
+''',
+    'ny_meteor.py': r'''# METEORER - ett Asteroids-spel för Pico Arcade
 #
 #   KEY0 (uppe vänster)  = sväng vänster
 #   KEY1 (uppe höger)    = sväng höger
@@ -526,27 +537,29 @@ def result(lcd, keys, head, score_txt, key, score, col, lower_is_better=False, e
 #   KEY2 (nere höger)    = skjut (håll inne för att skjuta hela tiden)
 #   alla fyra            = paus
 #
+# Uppackad från nyaspel.py, ändra i nyaspel.py i stället.
+
+from ny_lib import *
+
+ROT = 0.11
+THRUST = 0.16
+FRICTION = 0.988
+MAX_V = 5.5
+BULLET_V = 7.0
+BULLET_LIFE = 34
+SIZES = (0, 7, 14, 26)               # radie per storlek
+POINTS = (0, 100, 50, 20)
+ROCK_COLS = (0, rgb(255, 200, 140), rgb(200, 190, 255), rgb(150, 170, 230))
+SHIP_COL = rgb(120, 255, 240)
+UFO_COL = rgb(255, 90, 200)
 
 
-m_ROT = 0.11
-m_THRUST = 0.16
-m_FRICTION = 0.988
-m_MAX_V = 5.5
-m_BULLET_V = 7.0
-m_BULLET_LIFE = 34
-m_SIZES = (0, 7, 14, 26)               # radie per storlek
-m_POINTS = (0, 100, 50, 20)
-m_ROCK_COLS = (0, rgb(255, 200, 140), rgb(200, 190, 255), rgb(150, 170, 230))
-m_SHIP_COL = rgb(120, 255, 240)
-m_UFO_COL = rgb(255, 90, 200)
-
-
-def m_make_rock(x, y, size, speed):
+def make_rock(x, y, size, speed):
     n = 9 + size
     shape = []
     for i in range(n):
         a = i / n * 6.283
-        r = m_SIZES[size] * random.uniform(0.72, 1.12)
+        r = SIZES[size] * random.uniform(0.72, 1.12)
         shape.append((math.cos(a) * r, math.sin(a) * r))
     a = random.uniform(0, 6.283)
     v = random.uniform(0.4, 1.0) * speed * (1.6 - size * 0.25)
@@ -555,7 +568,7 @@ def m_make_rock(x, y, size, speed):
 
 
 @native
-def m_draw_poly(fb, pts, x, y, ang, col):
+def draw_poly(fb, pts, x, y, ang, col):
     ca = math.cos(ang)
     sa = math.sin(ang)
     n = len(pts)
@@ -569,11 +582,11 @@ def m_draw_poly(fb, pts, x, y, ang, col):
         py = qy
 
 
-m_SHIP = ((11, 0), (-8, -7), (-4, 0), (-8, 7))
-m_FLAME = ((-5, -3), (-13, 0), (-5, 3))
+SHIP = ((11, 0), (-8, -7), (-4, 0), (-8, 7))
+FLAME = ((-5, -3), (-13, 0), (-5, 3))
 
 
-def m_wrap(o, r):
+def wrap(o, r):
     if o[0] < -r:
         o[0] += W + 2 * r
     elif o[0] > W + r:
@@ -584,24 +597,24 @@ def m_wrap(o, r):
         o[1] -= H + 2 * r
 
 
-def m_draw_rock(fb, r, ox, oy):
-    col = m_ROCK_COLS[r[4]]
+def draw_rock(fb, r, ox, oy):
+    col = ROCK_COLS[r[4]]
     # Två lager linjer ger en svag glöd
-    m_draw_poly(fb, r[5], r[0] + ox + 1, r[1] + oy + 1, r[6], DIM)
-    m_draw_poly(fb, r[5], r[0] + ox, r[1] + oy, r[6], col)
+    draw_poly(fb, r[5], r[0] + ox + 1, r[1] + oy + 1, r[6], DIM)
+    draw_poly(fb, r[5], r[0] + ox, r[1] + oy, r[6], col)
 
 
-def m_draw_ufo(fb, u, ox, oy, t):
+def draw_ufo(fb, u, ox, oy, t):
     x, y = int(u[0]) + ox, int(u[1]) + oy
-    fb.ellipse(x, y, 13, 4, m_UFO_COL)
-    fb.ellipse(x, y - 4, 6, 4, m_UFO_COL)
-    fb.hline(x - 13, y, 26, m_UFO_COL)
+    fb.ellipse(x, y, 13, 4, UFO_COL)
+    fb.ellipse(x, y - 4, 6, 4, UFO_COL)
+    fb.hline(x - 13, y, 26, UFO_COL)
     if (t // 4) % 2:
         fb.pixel(x - 6, y + 2, YELLOW)
         fb.pixel(x + 6, y + 2, YELLOW)
 
 
-def m_play(lcd, keys):
+def play(lcd, keys):
     stars = Stars(40)
     parts = Particles(140)
     pops = Popups()
@@ -633,40 +646,40 @@ def m_play(lcd, keys):
                     x, y = random.uniform(0, W), random.uniform(0, H)
                     if (x - ship[0]) ** 2 + (y - ship[1]) ** 2 > 90 * 90:
                         break
-                rocks.append(m_make_rock(x, y, 3, 1.0 + wave_n * 0.08))
+                rocks.append(make_rock(x, y, 3, 1.0 + wave_n * 0.08))
             banner = 60
             inv = max(inv, 40)
 
         thrusting = False
         if dead == 0:
             if keys.held(K0):
-                ship[4] -= m_ROT
+                ship[4] -= ROT
             if keys.held(K1):
-                ship[4] += m_ROT
+                ship[4] += ROT
             ca, sa = math.cos(ship[4]), math.sin(ship[4])
             if keys.held(K3):
                 thrusting = True
-                ship[2] += ca * m_THRUST
-                ship[3] += sa * m_THRUST
+                ship[2] += ca * THRUST
+                ship[3] += sa * THRUST
                 if t % 2 == 0:
                     parts.p.append([ship[0] - ca * 9, ship[1] - sa * 9,
                                     -ca * 2 + random.uniform(-0.6, 0.6),
                                     -sa * 2 + random.uniform(-0.6, 0.6), 10,
                                     ORANGE if t % 4 else YELLOW, 0.0])
             sp = math.sqrt(ship[2] ** 2 + ship[3] ** 2)
-            if sp > m_MAX_V:
-                ship[2] *= m_MAX_V / sp
-                ship[3] *= m_MAX_V / sp
-            ship[2] *= m_FRICTION
-            ship[3] *= m_FRICTION
+            if sp > MAX_V:
+                ship[2] *= MAX_V / sp
+                ship[3] *= MAX_V / sp
+            ship[2] *= FRICTION
+            ship[3] *= FRICTION
             ship[0] += ship[2]
             ship[1] += ship[3]
-            m_wrap(ship, 10)
+            wrap(ship, 10)
             if cool > 0:
                 cool -= 1
             if (keys.pressed(K2) or (keys.held(K2) and cool == 0)) and len(bullets) < 6:
                 bullets.append([ship[0] + ca * 11, ship[1] + sa * 11,
-                                ca * m_BULLET_V + ship[2], sa * m_BULLET_V + ship[3], m_BULLET_LIFE])
+                                ca * BULLET_V + ship[2], sa * BULLET_V + ship[3], BULLET_LIFE])
                 cool = 7
         else:
             dead -= 1
@@ -681,7 +694,7 @@ def m_play(lcd, keys):
             b[0] += b[2]
             b[1] += b[3]
             b[4] -= 1
-            m_wrap(b, 2)
+            wrap(b, 2)
         bullets = [b for b in bullets if b[4] > 0]
 
         # Stenar
@@ -690,8 +703,8 @@ def m_play(lcd, keys):
             r[0] += r[2]
             r[1] += r[3]
             r[6] += r[7]
-            m_wrap(r, m_SIZES[r[4]])
-            rad = m_SIZES[r[4]]
+            wrap(r, SIZES[r[4]])
+            rad = SIZES[r[4]]
             hit = False
             for b in bullets:
                 if (b[0] - r[0]) ** 2 + (b[1] - r[1]) ** 2 < (rad + 2) ** 2:
@@ -699,13 +712,13 @@ def m_play(lcd, keys):
                     hit = True
                     break
             if hit:
-                score += m_POINTS[r[4]]
-                pops.add(r[0], r[1] - rad, "+%d" % m_POINTS[r[4]])
-                parts.burst(r[0], r[1], m_ROCK_COLS[r[4]], 6 + r[4] * 5, 2.5 + r[4] * 0.6, 18)
+                score += POINTS[r[4]]
+                pops.add(r[0], r[1] - rad, "+%d" % POINTS[r[4]])
+                parts.burst(r[0], r[1], ROCK_COLS[r[4]], 6 + r[4] * 5, 2.5 + r[4] * 0.6, 18)
                 shake.hit(r[4] * 2.2)
                 if r[4] > 1:
                     for _ in range(2):
-                        new_rocks.append(m_make_rock(r[0], r[1], r[4] - 1, 1.2 + wave_n * 0.1))
+                        new_rocks.append(make_rock(r[0], r[1], r[4] - 1, 1.2 + wave_n * 0.1))
                 continue
             new_rocks.append(r)
             if dead == 0 and inv == 0 and \
@@ -730,7 +743,7 @@ def m_play(lcd, keys):
                     b[4] = 0
                     score += 500
                     pops.add(ufo[0], ufo[1] - 10, "+500", MAGENTA)
-                    parts.burst(ufo[0], ufo[1], m_UFO_COL, 24, 3.5, 24)
+                    parts.burst(ufo[0], ufo[1], UFO_COL, 24, 3.5, 24)
                     shake.hit(6)
                     ufo = None
                     break
@@ -740,7 +753,7 @@ def m_play(lcd, keys):
             s[0] += s[2]
             s[1] += s[3]
             s[4] -= 1
-            m_wrap(s, 2)
+            wrap(s, 2)
             if dead == 0 and inv == 0 and (s[0] - ship[0]) ** 2 + (s[1] - ship[1]) ** 2 < 64:
                 s[4] = 0
                 dead = 70
@@ -748,7 +761,7 @@ def m_play(lcd, keys):
 
         if dead == 70:                        # skeppet sprängdes precis
             lives -= 1
-            parts.burst(ship[0], ship[1], m_SHIP_COL, 30, 4, 30)
+            parts.burst(ship[0], ship[1], SHIP_COL, 30, 4, 30)
             parts.burst(ship[0], ship[1], ORANGE, 20, 2.5, 24)
             shake.hit(9)
         if score >= next_life:
@@ -763,22 +776,22 @@ def m_play(lcd, keys):
         lcd.fill(BLACK)
         stars.draw(lcd, 0.0, 0.0)
         for r in rocks:
-            m_draw_rock(lcd, r, ox, oy)
+            draw_rock(lcd, r, ox, oy)
         if ufo:
-            m_draw_ufo(lcd, ufo, ox, oy, t)
+            draw_ufo(lcd, ufo, ox, oy, t)
         for b in bullets:
             lcd.fill_rect(int(b[0]) - 1 + ox, int(b[1]) - 1 + oy, 3, 3, YELLOW)
         for s in ufo_shots:
             lcd.fill_rect(int(s[0]) - 1 + ox, int(s[1]) - 1 + oy, 3, 3, MAGENTA)
         parts.draw(lcd, ox, oy)
         if dead == 0 and (inv == 0 or (t // 3) % 2 == 0):
-            m_draw_poly(lcd, m_SHIP, ship[0] + ox, ship[1] + oy, ship[4], m_SHIP_COL)
+            draw_poly(lcd, SHIP, ship[0] + ox, ship[1] + oy, ship[4], SHIP_COL)
             if thrusting and t % 2 == 0:
-                m_draw_poly(lcd, m_FLAME, ship[0] + ox, ship[1] + oy, ship[4], ORANGE)
+                draw_poly(lcd, FLAME, ship[0] + ox, ship[1] + oy, ship[4], ORANGE)
         pops.draw(lcd, ox, oy)
         big_text(lcd, str(score), 6, 4, WHITE, 2)
         for i in range(lives):
-            m_draw_poly(lcd, m_SHIP, W - 14 - i * 16, 12, -1.5708, m_SHIP_COL)
+            draw_poly(lcd, SHIP, W - 14 - i * 16, 12, -1.5708, SHIP_COL)
         if banner > 0:
             banner -= 1
             stext(lcd, "VAG %d" % wave_n, 96, CYAN, 3)
@@ -787,42 +800,40 @@ def m_play(lcd, keys):
         frame_wait(t0)
 
 
-def m_demo(lcd, t):
+def demo(lcd, t):
     """Stenar som svävar bakom titeln."""
     for i in range(5):
         x = (i * 71 + t * (0.6 + i * 0.15)) % (W + 60) - 30
         y = 60 + (i * 47) % 120
-        pts = m_DEMO_ROCKS[i]
-        m_draw_poly(lcd, pts, x, y, t * 0.01 * (i + 1), m_ROCK_COLS[1 + i % 3])
+        pts = DEMO_ROCKS[i]
+        draw_poly(lcd, pts, x, y, t * 0.01 * (i + 1), ROCK_COLS[1 + i % 3])
 
 
 random.seed(3)
-m_DEMO_ROCKS = [m_make_rock(0, 0, 1 + i % 3, 1)[5] for i in range(5)]
+DEMO_ROCKS = [make_rock(0, 0, 1 + i % 3, 1)[5] for i in range(5)]
 random.seed(time.ticks_ms())
 
 
-def m_main(lcd, keys):
+def main():
+    lcd, keys = init()
     while True:
         if not title(lcd, keys, "METEORER", CYAN,
                      ("Sprang stenarna innan", "de krossar ditt skepp!", "",
                       "Stora stenar spricker i mindre.", "Akta dig for UFO:n."),
-                     "meteor", ("svang", "svang", "gasa", "skjut"), m_demo):
+                     "meteor", ("svang", "svang", "gasa", "skjut"), demo):
             back()
         while True:
             gc.collect()
-            score = m_play(lcd, keys)
+            score = play(lcd, keys)
             if score is None:
                 break
             if not result(lcd, keys, "GAME OVER", str(score), "meteor", score, CYAN):
                 back()
 
 
-
-
-# ==============================================================
-# TURBO
-# ==============================================================
-# TURBO - racingspel i 3D för Pico Arcade
+main()
+''',
+    'ny_turbo.py': r'''# TURBO - racingspel i 3D för Pico Arcade
 #
 #   KEY0 (uppe vänster)  = styr vänster
 #   KEY1 (uppe höger)    = styr höger
@@ -831,75 +842,77 @@ def m_main(lcd, keys):
 #   alla fyra            = paus
 #
 # Kör så långt du kan innan tiden tar slut. Varje kontrollpunkt ger mer tid.
+# Uppackad från nyaspel.py, ändra i nyaspel.py i stället.
 
+from ny_lib import *
 from array import array
 
-t_SEG_L = 200                  # längd på en vägbit
-t_ROAD_W = 2000                # halva vägens bredd
-t_RUMBLE = 3                   # vägbitar per färgrand
-t_DRAW = 70                    # så många bitar framåt ritas
-t_CAM_H = 1000.0
-t_CAM_D = 0.84                 # 1/tan(fov/2), fov ca 100 grader
-t_PLAYER_Z = t_CAM_H * t_CAM_D
-t_MAX_SPEED = 140.0            # enheter per bild
-t_ACCEL = t_MAX_SPEED / 80
-t_BRAKE = -t_MAX_SPEED / 25
-t_DECEL = -t_MAX_SPEED / 160
-t_OFF_DECEL = -t_MAX_SPEED / 45
-t_OFF_LIMIT = t_MAX_SPEED / 4
-t_CENTRIFUGAL = 0.32
-t_CHECK_EVERY = 260            # vägbitar mellan kontrollpunkter
-t_HX, t_HY = W // 2, H // 2
+SEG_L = 200                  # längd på en vägbit
+ROAD_W = 2000                # halva vägens bredd
+RUMBLE = 3                   # vägbitar per färgrand
+DRAW = 70                    # så många bitar framåt ritas
+CAM_H = 1000.0
+CAM_D = 0.84                 # 1/tan(fov/2), fov ca 100 grader
+PLAYER_Z = CAM_H * CAM_D
+MAX_SPEED = 140.0            # enheter per bild
+ACCEL = MAX_SPEED / 80
+BRAKE = -MAX_SPEED / 25
+DECEL = -MAX_SPEED / 160
+OFF_DECEL = -MAX_SPEED / 45
+OFF_LIMIT = MAX_SPEED / 4
+CENTRIFUGAL = 0.32
+CHECK_EVERY = 260            # vägbitar mellan kontrollpunkter
+HX, HY = W // 2, H // 2
 
-t_FOG = (150, 175, 220)
-t_NFOG = 8
+FOG = (150, 175, 220)
+NFOG = 8
 
 
-def t_fogc(c, f):
-    return mix(c, t_FOG, f)
+def fogc(c, f):
+    return mix(c, FOG, f)
 
 
 # Färger per dimnivå: (gräs, kant, väg, linje) för ljus och mörk rand
-t_PAL = []
-for t_lv in range(t_NFOG):
-    f = (t_lv / (t_NFOG - 1)) ** 1.6 * 0.85
-    t_PAL.append(((t_fogc((40, 170, 50), f), t_fogc((255, 255, 255), f), t_fogc((110, 110, 118), f), t_fogc((255, 255, 255), f)),
-                (t_fogc((30, 145, 40), f), t_fogc((220, 40, 40), f), t_fogc((100, 100, 108), f), 0)))
-t_SKY = [mix((40, 110, 230), t_FOG, y / t_HY) for y in range(t_HY + 20)]
+PAL = []
+for lv in range(NFOG):
+    f = (lv / (NFOG - 1)) ** 1.6 * 0.85
+    PAL.append(((fogc((40, 170, 50), f), fogc((255, 255, 255), f), fogc((110, 110, 118), f), fogc((255, 255, 255), f)),
+                (fogc((30, 145, 40), f), fogc((220, 40, 40), f), fogc((100, 100, 108), f), 0)))
+SKY = [mix((40, 110, 230), FOG, y / HY) for y in range(HY + 20)]
 
 
 # ---------------------------------------------------------------
 # Banan
 # ---------------------------------------------------------------
-def t_ease_in(a, b, p):
+def ease_in(a, b, p):
     return a + (b - a) * p * p
 
 
-def t_ease_io(a, b, p):
+def ease_io(a, b, p):
     return a + (b - a) * ((-math.cos(p * math.pi) / 2) + 0.5)
 
 
-def t_build_track():
+def build_track():
     random.seed(2026)
     curves = []
     ys = []
 
     def add(enter, hold, leave, curve, height):
         start_y = ys[-1] if ys else 0.0
-        end_y = start_y + height * t_SEG_L
+        end_y = start_y + height * SEG_L
         total = enter + hold + leave
         n = 0
         for i in range(enter):
-            curves.append(t_ease_in(0, curve, i / enter))
-            ys.append(t_ease_io(start_y, end_y, n / total))
+            curves.append(ease_in(0, curve, i / enter))
+            ys.append(ease_io(start_y, end_y, n / total))
             n += 1
         for i in range(hold):
             curves.append(curve)
-            ys.append(t_ease_io(start_y, end_y, n / total))
+            ys.append(ease_io(start_y, end_y, n / total))
             n += 1
         for i in range(leave):
-            curves.append(t_ease_io(curve, 0, i / leave))
-            ys.append(t_ease_io(start_y, end_y, n / total))
+            curves.append(ease_io(curve, 0, i / leave))
+            ys.append(ease_io(start_y, end_y, n / total))
             n += 1
 
     add(10, 40, 10, 0, 0)
@@ -922,7 +935,7 @@ def t_build_track():
         else:
             add(L, L * 2, L, c // 2, 0)
         pieces += 1
-    add(20, 20, 20, 0, -(ys[-1] / t_SEG_L))                 # tillbaka till samma höjd
+    add(20, 20, 20, 0, -(ys[-1] / SEG_L))                 # tillbaka till samma höjd
     n = len(curves)
     sprites = {}
     for i in range(20, n, 1):
@@ -931,7 +944,7 @@ def t_build_track():
             sprites[i] = [(random.choice((0, 0, 1, 2)), side * random.uniform(1.35, 2.6))]
             if random.random() < 0.5:
                 sprites[i].append((0, -side * random.uniform(1.35, 2.4)))
-        if i % t_CHECK_EVERY == 0:
+        if i % CHECK_EVERY == 0:
             sprites[i] = [(3, -1.25), (3, 1.25)]
     return array('f', curves), array('f', ys), sprites
 
@@ -939,42 +952,42 @@ def t_build_track():
 # ---------------------------------------------------------------
 # Ritning
 # ---------------------------------------------------------------
-t_MTN = [int(30 + 18 * math.sin(i * 0.02) + 10 * math.sin(i * 0.057 + 2) + 6 * math.sin(i * 0.13)) for i in range(640)]
-t_HILLC = [int(14 + 8 * math.sin(i * 0.05 + 1) + 4 * math.sin(i * 0.17)) for i in range(640)]
+MTN = [int(30 + 18 * math.sin(i * 0.02) + 10 * math.sin(i * 0.057 + 2) + 6 * math.sin(i * 0.13)) for i in range(640)]
+HILLC = [int(14 + 8 * math.sin(i * 0.05 + 1) + 4 * math.sin(i * 0.17)) for i in range(640)]
 
 
-def t_sky_bg(lcd):
-    for y in range(len(t_SKY)):
-        lcd.hline(0, y, W, t_SKY[y])
+def sky_bg(lcd):
+    for y in range(len(SKY)):
+        lcd.hline(0, y, W, SKY[y])
     lcd.ellipse(240, 40, 18, 18, rgb(255, 245, 190), True)
 
 
 @native
-def t_draw_back(fb, off):
+def draw_back(fb, off):
     o = int(off) % 640
     c1 = rgb(120, 130, 200)
     c2 = rgb(70, 140, 90)
     for x in range(0, W, 2):
-        h = t_MTN[(x + o) % 640]
-        fb.fill_rect(x, t_HY - h, 2, h + 20, c1)
-        h2 = t_HILLC[(x + o * 2) % 640]
-        fb.fill_rect(x, t_HY - h2 + 6, 2, h2 + 20, c2)
+        h = MTN[(x + o) % 640]
+        fb.fill_rect(x, HY - h, 2, h + 20, c1)
+        h2 = HILLC[(x + o * 2) % 640]
+        fb.fill_rect(x, HY - h2 + 6, 2, h2 + 20, c2)
 
 
 @native
-def t_draw_road(fb, curves, ys, n_seg, position, player_x, player_y, proj, base):
+def draw_road(fb, curves, ys, n_seg, position, player_x, player_y, proj, base):
     """Ritar vägen och sparar varje bits position för sprites och bilar."""
-    base_off = position - base * t_SEG_L
-    base_pct = base_off / t_SEG_L
-    camx = player_x * t_ROAD_W
-    camy = player_y + t_CAM_H
+    base_off = position - base * SEG_L
+    base_pct = base_off / SEG_L
+    camx = player_x * ROAD_W
+    camy = player_y + CAM_H
     x = 0.0
     dx = -curves[base] * base_pct
     maxy = H
-    for n in range(t_DRAW):
+    for n in range(DRAW):
         i = (base + n) % n_seg
-        z1 = n * t_SEG_L - base_off            # avstånd från kameran
-        z2 = z1 + t_SEG_L
+        z1 = n * SEG_L - base_off            # avstånd från kameran
+        z2 = z1 + SEG_L
         j = (i + 1) % n_seg
         proj[n * 4 + 3] = maxy
         if z1 <= 1.0:
@@ -982,14 +995,14 @@ def t_draw_road(fb, curves, ys, n_seg, position, player_x, player_y, proj, base)
             dx += curves[i]
             proj[n * 4] = -1.0
             continue
-        s1 = t_CAM_D / z1
-        s2 = t_CAM_D / z2
-        X1 = t_HX + s1 * (x - camx) * t_HX
-        Y1 = t_HY - s1 * (ys[i] - camy) * t_HY
-        W1 = s1 * t_ROAD_W * t_HX
-        X2 = t_HX + s2 * (x + dx - camx) * t_HX
-        Y2 = t_HY - s2 * (ys[j] - camy) * t_HY
-        W2 = s2 * t_ROAD_W * t_HX
+        s1 = CAM_D / z1
+        s2 = CAM_D / z2
+        X1 = HX + s1 * (x - camx) * HX
+        Y1 = HY - s1 * (ys[i] - camy) * HY
+        W1 = s1 * ROAD_W * HX
+        X2 = HX + s2 * (x + dx - camx) * HX
+        Y2 = HY - s2 * (ys[j] - camy) * HY
+        W2 = s2 * ROAD_W * HX
         proj[n * 4] = s1
         proj[n * 4 + 1] = X1
         proj[n * 4 + 2] = Y1
@@ -997,8 +1010,8 @@ def t_draw_road(fb, curves, ys, n_seg, position, player_x, player_y, proj, base)
         dx += curves[i]
         if Y2 >= Y1 or Y2 >= maxy:
             continue
-        t_lv = n * t_NFOG // t_DRAW
-        cols = t_PAL[t_lv][(i // t_RUMBLE) % 2]
+        lv = n * NFOG // DRAW
+        cols = PAL[lv][(i // RUMBLE) % 2]
         grass = cols[0]
         rumble = cols[1]
         road = cols[2]
@@ -1026,7 +1039,7 @@ def t_draw_road(fb, curves, ys, n_seg, position, player_x, player_y, proj, base)
             maxy = Y2
 
 
-def t_draw_sprite(fb, kind, x, y, s, t):
+def draw_sprite(fb, kind, x, y, s, t):
     """x, y = mitten nertill. s = skala (pixlar per 'enhet')."""
     if kind == 0:                                # palm
         h = int(s * 2600)
@@ -1054,7 +1067,7 @@ def t_draw_sprite(fb, kind, x, y, s, t):
         fb.fill_rect(int(x - w / 2), y - h, w, h, WHITE if (t // 4) % 2 else YELLOW)
 
 
-def t_draw_car(fb, x, y, s, col, braking=False):
+def draw_car(fb, x, y, s, col, braking=False):
     """Bil bakifrån. s = skala."""
     w = int(s * 1200)
     if w < 3:
@@ -1071,8 +1084,8 @@ def t_draw_car(fb, x, y, s, col, braking=False):
     fb.fill_rect(x + w // 2 - max(1, w // 5), y - max(1, h // 4), max(1, w // 5), max(1, h // 4), BLACK)
 
 
-def t_draw_player(fb, steer, bump, braking):
-    x = t_HX
+def draw_player(fb, steer, bump, braking):
+    x = HX
     y = 226 + bump
     col = rgb(230, 30, 40)
     dark = rgb(150, 15, 25)
@@ -1097,32 +1110,32 @@ def t_draw_player(fb, steer, bump, braking):
 # ---------------------------------------------------------------
 # Spelet
 # ---------------------------------------------------------------
-t_CAR_COLS = (rgb(40, 110, 255), rgb(255, 200, 30), rgb(240, 240, 240), rgb(60, 200, 90), rgb(255, 120, 30))
+CAR_COLS = (rgb(40, 110, 255), rgb(255, 200, 30), rgb(240, 240, 240), rgb(60, 200, 90), rgb(255, 120, 30))
 
 
-def t_play(lcd, keys, track):
+def play(lcd, keys, track):
     curves, ys, sprites = track
     n_seg = len(curves)
-    track_len = n_seg * t_SEG_L
-    proj = array('f', [0.0] * (t_DRAW * 4))
+    track_len = n_seg * SEG_L
+    proj = array('f', [0.0] * (DRAW * 4))
     position = 0.0
     speed = 0.0
     player_x = 0.0
     sky_off = 0.0
     time_left = 45.0 * 30                   # i bilder
     dist = 0.0
-    next_check = t_CHECK_EVERY
+    next_check = CHECK_EVERY
     banner, banner_txt = 0, ""
     overtakes = 0
     shake = Shake()
     pops = Popups()
     cars = []
     for k in range(14):
-        cars.append([random.uniform(10, n_seg) * t_SEG_L, random.uniform(-0.75, 0.75),
-                     random.uniform(t_MAX_SPEED * 0.3, t_MAX_SPEED * 0.6), t_CAR_COLS[k % len(t_CAR_COLS)], False])
+        cars.append([random.uniform(10, n_seg) * SEG_L, random.uniform(-0.75, 0.75),
+                     random.uniform(MAX_SPEED * 0.3, MAX_SPEED * 0.6), CAR_COLS[k % len(CAR_COLS)], False])
     countdown = 90
     t = 0
-    lcd.set_bg(t_sky_bg)
+    lcd.set_bg(sky_bg)
     keys.wait_release()
     while True:
         t0 = time.ticks_ms()
@@ -1130,12 +1143,12 @@ def t_play(lcd, keys, track):
         if keys.menu():
             if pause(lcd, keys):
                 return None
-            lcd.set_bg(t_sky_bg)
-        base = int(position // t_SEG_L) % n_seg
-        player_seg = int((position + t_PLAYER_Z) // t_SEG_L) % n_seg
-        pct = ((position + t_PLAYER_Z) % t_SEG_L) / t_SEG_L
+            lcd.set_bg(sky_bg)
+        base = int(position // SEG_L) % n_seg
+        player_seg = int((position + PLAYER_Z) // SEG_L) % n_seg
+        pct = ((position + PLAYER_Z) % SEG_L) / SEG_L
         player_y = ys[player_seg] + (ys[(player_seg + 1) % n_seg] - ys[player_seg]) * pct
-        spd_pct = speed / t_MAX_SPEED
+        spd_pct = speed / MAX_SPEED
         steer = 0
         braking = False
         if countdown > 0:
@@ -1149,21 +1162,21 @@ def t_play(lcd, keys, track):
             if keys.held(K1):
                 player_x += dxs
                 steer = 1
-            player_x -= dxs * spd_pct * curves[player_seg] * t_CENTRIFUGAL
+            player_x -= dxs * spd_pct * curves[player_seg] * CENTRIFUGAL
             if keys.held(K2):
-                speed += t_ACCEL
+                speed += ACCEL
             elif keys.held(K3):
-                speed += t_BRAKE
+                speed += BRAKE
                 braking = True
             else:
-                speed += t_DECEL
+                speed += DECEL
             if keys.held(K3):
                 braking = True
             off = player_x < -1 or player_x > 1
-            if off and speed > t_OFF_LIMIT:
-                speed += t_OFF_DECEL
+            if off and speed > OFF_LIMIT:
+                speed += OFF_DECEL
                 shake.hit(1.5)
-            speed = max(0.0, min(t_MAX_SPEED, speed))
+            speed = max(0.0, min(MAX_SPEED, speed))
             player_x = max(-2.5, min(2.5, player_x))
         position = (position + speed) % track_len
         dist += speed
@@ -1173,21 +1186,21 @@ def t_play(lcd, keys, track):
         for c in cars:
             c[0] = (c[0] + c[2]) % track_len
             rel = (c[0] - position) % track_len
-            if not c[4] and rel < t_PLAYER_Z - 50 and rel > t_PLAYER_Z - 400:
+            if not c[4] and rel < PLAYER_Z - 50 and rel > PLAYER_Z - 400:
                 c[4] = True                          # vi körde om
                 overtakes += 1
-                pops.add(t_HX, 160, "OMKORNING +100", CYAN)
-            if rel > t_PLAYER_Z + t_SEG_L * 3:
+                pops.add(HX, 160, "OMKORNING +100", CYAN)
+            if rel > PLAYER_Z + SEG_L * 3:
                 c[4] = False
-            if abs(rel - t_PLAYER_Z) < t_SEG_L * 0.7 and abs(c[1] - player_x) < 0.55 and speed > c[2]:
+            if abs(rel - PLAYER_Z) < SEG_L * 0.7 and abs(c[1] - player_x) < 0.55 and speed > c[2]:
                 speed = c[2] * 0.6
                 shake.hit(7)
-                pops.add(t_HX, 140, "KRASCH!", RED)
+                pops.add(HX, 140, "KRASCH!", RED)
 
         # Kontrollpunkt
-        seg_abs = int(dist // t_SEG_L)
+        seg_abs = int(dist // SEG_L)
         if seg_abs >= next_check:
-            next_check += t_CHECK_EVERY
+            next_check += CHECK_EVERY
             time_left += 25 * 30
             banner, banner_txt = 60, "KONTROLLPUNKT +25"
         if time_left <= 0:
@@ -1197,34 +1210,34 @@ def t_play(lcd, keys, track):
         # --- Rita ---
         ox, oy = shake.offset()
         lcd.load_bg()
-        t_draw_back(lcd, sky_off * 10)
-        t_draw_road(lcd, curves, ys, n_seg, position, player_x, player_y, proj, base)
+        draw_back(lcd, sky_off * 10)
+        draw_road(lcd, curves, ys, n_seg, position, player_x, player_y, proj, base)
         # Sprites och bilar bakifrån och fram
         car_at = {}
         for c in cars:
             rel = (c[0] - position) % track_len
-            k = int(rel // t_SEG_L)
-            if 1 <= k < t_DRAW:
+            k = int(rel // SEG_L)
+            if 1 <= k < DRAW:
                 car_at.setdefault(k, []).append(c)
-        for n in range(t_DRAW - 1, 0, -1):
+        for n in range(DRAW - 1, 0, -1):
             s = proj[n * 4]
             if s <= 0:
                 continue
             X, Y, clip = proj[n * 4 + 1], proj[n * 4 + 2], proj[n * 4 + 3]
             if Y > clip + 2:
                 continue
-            sc = s * t_HX
+            sc = s * HX
             i = (base + n) % n_seg
             sp = sprites.get(i)
             if sp:
                 for kind, offs in sp:
-                    t_draw_sprite(lcd, kind, X + sc * offs * t_ROAD_W, int(Y), sc, t)
+                    draw_sprite(lcd, kind, X + sc * offs * ROAD_W, int(Y), sc, t)
             cl = car_at.get(n)
             if cl:
                 for c in cl:
-                    t_draw_car(lcd, X + sc * c[1] * t_ROAD_W, int(Y), sc, c[3])
+                    draw_car(lcd, X + sc * c[1] * ROAD_W, int(Y), sc, c[3])
         bump = (t % 2) * 2 if (player_x < -1 or player_x > 1) and speed > 5 else 0
-        t_draw_player(lcd, steer, bump + oy, braking)
+        draw_player(lcd, steer, bump + oy, braking)
 
         # Instrument
         secs = int(time_left // 30)
@@ -1238,7 +1251,7 @@ def t_play(lcd, keys, track):
         lcd.text("km/h", 280, 9, GRAY)
         lcd.fill_rect(160, 8, 56, 6, DIM)
         lcd.fill_rect(160, 8, int(56 * spd_pct), 6, ORANGE if spd_pct < 0.9 else RED)
-        prog = 1 - (next_check - dist / t_SEG_L) / t_CHECK_EVERY
+        prog = 1 - (next_check - dist / SEG_L) / CHECK_EVERY
         lcd.hline(6, 24, W - 12, DIM)
         lcd.fill_rect(6 + int((W - 12) * max(0, min(1, prog))) - 2, 23, 4, 3, YELLOW)
         pops.draw(lcd)
@@ -1254,7 +1267,7 @@ def t_play(lcd, keys, track):
         frame_wait(t0)
 
 
-def t_demo(lcd, t):
+def demo(lcd, t):
     # Liten väg i perspektiv nertill på titelskärmen
     for i in range(48):
         y = 192 + i
@@ -1262,36 +1275,34 @@ def t_demo(lcd, t):
             break
         z = 60.0 / (i + 1)
         w = int(160 / z) + 6
-        cx = t_HX + int(math.sin(t * 0.03 + z * 0.3) * 20 / z * 3)
+        cx = HX + int(math.sin(t * 0.03 + z * 0.3) * 20 / z * 3)
         s = int(z * 1.5 + t * 0.4) & 1
         lcd.hline(0, y, W, rgb(40, 170, 50) if s else rgb(30, 145, 40))
         lcd.hline(cx - w, y, 2 * w, rgb(110, 110, 118))
 
 
-def t_main(lcd, keys):
-    track = t_build_track()
+def main():
+    lcd, keys = init()
+    track = build_track()
     random.seed(time.ticks_ms())
     while True:
         if not title(lcd, keys, "TURBO", ORANGE,
                      ("Kor sa langt du kan", "innan tiden tar slut!", "",
                       "Kontrollpunkter ger +25 s.", "Omkorningar ger extrapoang."),
-                     "turbo", ("vanster", "hoger", "broms", "gasa"), t_demo):
+                     "turbo", ("vanster", "hoger", "broms", "gasa"), demo):
             back()
         while True:
             gc.collect()
-            score = t_play(lcd, keys, track)
+            score = play(lcd, keys, track)
             if score is None:
                 break
             if not result(lcd, keys, "TIDEN SLUT!", str(score), "turbo", score, ORANGE):
                 back()
 
 
-
-
-# ==============================================================
-# BUBBLOR
-# ==============================================================
-# BUBBLOR - bubbelskjutare för Pico Arcade
+main()
+''',
+    'ny_bubblor.py': r'''# BUBBLOR - bubbelskjutare för Pico Arcade
 #
 #   KEY0 (uppe vänster)  = sikta åt vänster (håll inne)
 #   KEY1 (uppe höger)    = sikta åt höger (håll inne)
@@ -1301,60 +1312,62 @@ def t_main(lcd, keys):
 #
 # Få tre eller fler i samma färg att sitta ihop så spricker de. Bubblor
 # som inte längre hänger fast i taket ramlar ner och ger extra poäng.
+# Uppackad från nyaspel.py, ändra i nyaspel.py i stället.
+
+from ny_lib import *
+
+R = 10
+D = 20
+COLS = 9
+ROWS = 13
+RH = 17
+X0 = 70
+FIELD_W = COLS * D
+SHOOT_X, SHOOT_Y = X0 + FIELD_W // 2, 224
+LOSE_Y = 204
+SPEED = 7.5
+
+BCOL = ((255, 70, 80), (255, 210, 50), (70, 220, 100), (60, 140, 255), (190, 90, 255), (40, 230, 230))
+B_MAIN = [rgb(*c) for c in BCOL]
+B_DARK = [mix(c, (0, 0, 0), 0.45) for c in BCOL]
+B_LIGHT = [mix(c, (255, 255, 255), 0.55) for c in BCOL]
+FIELD_BG = rgb(14, 12, 34)
 
 
-b_R = 10
-b_D = 20
-b_COLS = 9
-b_ROWS = 13
-b_RH = 17
-b_X0 = 70
-b_FIELD_W = b_COLS * b_D
-b_SHOOT_X, b_SHOOT_Y = b_X0 + b_FIELD_W // 2, 224
-b_LOSE_Y = 204
-b_SPEED = 7.5
-
-b_BCOL = ((255, 70, 80), (255, 210, 50), (70, 220, 100), (60, 140, 255), (190, 90, 255), (40, 230, 230))
-b_B_MAIN = [rgb(*c) for c in b_BCOL]
-b_B_DARK = [mix(c, (0, 0, 0), 0.45) for c in b_BCOL]
-b_B_LIGHT = [mix(c, (255, 255, 255), 0.55) for c in b_BCOL]
-b_FIELD_BG = rgb(14, 12, 34)
-
-
-def b_draw_bubble(fb, x, y, ci, r=b_R):
-    fb.ellipse(x, y, r, r, b_B_DARK[ci], True)
-    fb.ellipse(x, y, r - 2, r - 2, b_B_MAIN[ci], True)
+def draw_bubble(fb, x, y, ci, r=R):
+    fb.ellipse(x, y, r, r, B_DARK[ci], True)
+    fb.ellipse(x, y, r - 2, r - 2, B_MAIN[ci], True)
     if r >= 6:
-        fb.ellipse(x - r // 3, y - r // 3, r // 3, r // 4 + 1, b_B_LIGHT[ci], True)
+        fb.ellipse(x - r // 3, y - r // 3, r // 3, r // 4 + 1, B_LIGHT[ci], True)
         fb.pixel(x - r // 3 - 1, y - r // 3 - 1, WHITE)
 
 
-def b_ncols(row):
-    return b_COLS if row % 2 == 0 else b_COLS - 1
+def ncols(row):
+    return COLS if row % 2 == 0 else COLS - 1
 
 
-def b_cell_xy(row, col, y0):
-    return b_X0 + b_R + col * b_D + (b_R if row % 2 else 0), y0 + b_R + row * b_RH
+def cell_xy(row, col, y0):
+    return X0 + R + col * D + (R if row % 2 else 0), y0 + R + row * RH
 
 
-def b_neighbors(row, col):
+def neighbors(row, col):
     if row % 2 == 0:
         cand = ((row, col - 1), (row, col + 1), (row - 1, col - 1), (row - 1, col),
                 (row + 1, col - 1), (row + 1, col))
     else:
         cand = ((row, col - 1), (row, col + 1), (row - 1, col), (row - 1, col + 1),
                 (row + 1, col), (row + 1, col + 1))
-    return [(r, c) for r, c in cand if 0 <= r < b_ROWS and 0 <= c < b_ncols(r)]
+    return [(r, c) for r, c in cand if 0 <= r < ROWS and 0 <= c < ncols(r)]
 
 
-def b_field_bg(lcd):
+def field_bg(lcd):
     draw_gradient(lcd)
     for i in range(30):                                    # svaga prickar
         lcd.pixel((i * 97) % W, (i * 53) % H, DIM)
-    lcd.fill_rect(b_X0 - 4, 0, b_FIELD_W + 8, H, rgb(60, 50, 120))
-    lcd.fill_rect(b_X0, 0, b_FIELD_W, H, b_FIELD_BG)
-    for y in range(b_LOSE_Y, b_LOSE_Y + 1):
-        for x in range(b_X0, b_X0 + b_FIELD_W, 6):
+    lcd.fill_rect(X0 - 4, 0, FIELD_W + 8, H, rgb(60, 50, 120))
+    lcd.fill_rect(X0, 0, FIELD_W, H, FIELD_BG)
+    for y in range(LOSE_Y, LOSE_Y + 1):
+        for x in range(X0, X0 + FIELD_W, 6):
             lcd.hline(x, y, 3, rgb(120, 40, 60))
     lcd.text("POANG", 8, 10, GRAY)
     lcd.text("NIVA", 8, 60, GRAY)
@@ -1362,15 +1375,15 @@ def b_field_bg(lcd):
     lcd.text("TAKET", W - 60, 90, GRAY)
 
 
-class b_Game:
+class Game:
     def __init__(self, level, score):
         self.level = level
         self.score = score
-        self.grid = [bytearray(b_COLS) for _ in range(b_ROWS)]
+        self.grid = [bytearray(COLS) for _ in range(ROWS)]
         self.n_colors = min(3 + level // 2, 6)
         rows = min(4 + level, 8)
         for r in range(rows):
-            for c in range(b_ncols(r)):
+            for c in range(ncols(r)):
                 self.grid[r][c] = random.randint(1, self.n_colors)
         self.drop = 0                       # hur många rader taket har sänkts
         self.shots = 0
@@ -1379,7 +1392,7 @@ class b_Game:
         self.nxt = self.pick()
 
     def y0(self):
-        return 6 + self.drop * b_RH
+        return 6 + self.drop * RH
 
     def present(self):
         s = []
@@ -1403,15 +1416,15 @@ class b_Game:
     def hits(self, x, y):
         """Krockar en bubbla på (x, y) med något?"""
         y0 = self.y0()
-        if y - b_R <= y0:
+        if y - R <= y0:
             return True
-        row = int((y - y0 - b_R) / b_RH + 0.5)
+        row = int((y - y0 - R) / RH + 0.5)
         for r in range(row - 1, row + 2):
-            if 0 <= r < b_ROWS:
-                for c in range(b_ncols(r)):
+            if 0 <= r < ROWS:
+                for c in range(ncols(r)):
                     if self.grid[r][c]:
-                        cx, cy = b_cell_xy(r, c, y0)
-                        if (cx - x) ** 2 + (cy - y) ** 2 < (b_D - 3) ** 2:
+                        cx, cy = cell_xy(r, c, y0)
+                        if (cx - x) ** 2 + (cy - y) ** 2 < (D - 3) ** 2:
                             return True
         return False
 
@@ -1419,11 +1432,11 @@ class b_Game:
         """Hitta närmaste tomma ruta för en bubbla som har stannat."""
         y0 = self.y0()
         best, bd = None, 1e9
-        row = int((y - y0 - b_R) / b_RH + 0.5)
-        for r in range(max(0, row - 1), min(b_ROWS, row + 2)):
-            for c in range(b_ncols(r)):
+        row = int((y - y0 - R) / RH + 0.5)
+        for r in range(max(0, row - 1), min(ROWS, row + 2)):
+            for c in range(ncols(r)):
                 if not self.grid[r][c]:
-                    cx, cy = b_cell_xy(r, c, y0)
+                    cx, cy = cell_xy(r, c, y0)
                     d = (cx - x) ** 2 + (cy - y) ** 2
                     if d < bd:
                         best, bd = (r, c), d
@@ -1436,7 +1449,7 @@ class b_Game:
         stack = [start]
         while stack:
             r, c = stack.pop()
-            for n in b_neighbors(r, c):
+            for n in neighbors(r, c):
                 if n not in seen and self.grid[n[0]][n[1]] and \
                         (not same_color or self.grid[n[0]][n[1]] == col):
                     seen.add(n)
@@ -1445,38 +1458,38 @@ class b_Game:
 
     def floating(self):
         attached = set()
-        for c in range(b_ncols(0)):
+        for c in range(ncols(0)):
             if self.grid[0][c] and (0, c) not in attached:
                 attached.update(self.flood((0, c), False))
         out = []
-        for r in range(b_ROWS):
-            for c in range(b_ncols(r)):
+        for r in range(ROWS):
+            for c in range(ncols(r)):
                 if self.grid[r][c] and (r, c) not in attached:
                     out.append((r, c))
         return out
 
     def lost(self):
         y0 = self.y0()
-        for r in range(b_ROWS):
-            for c in range(b_ncols(r)):
-                if self.grid[r][c] and b_cell_xy(r, c, y0)[1] + b_R > b_LOSE_Y:
+        for r in range(ROWS):
+            for c in range(ncols(r)):
+                if self.grid[r][c] and cell_xy(r, c, y0)[1] + R > LOSE_Y:
                     return True
         return False
 
 
-def b_trace(g, ang):
+def trace(g, ang):
     """Siktlinje: punkter längs bubblans väg (med studs mot väggarna)."""
-    x, y = float(b_SHOOT_X), float(b_SHOOT_Y)
+    x, y = float(SHOOT_X), float(SHOOT_Y)
     vx, vy = math.sin(ang) * 6, -math.cos(ang) * 6
     pts = []
     for i in range(70):
         x += vx
         y += vy
-        if x < b_X0 + b_R:
-            x = 2 * (b_X0 + b_R) - x
+        if x < X0 + R:
+            x = 2 * (X0 + R) - x
             vx = -vx
-        elif x > b_X0 + b_FIELD_W - b_R:
-            x = 2 * (b_X0 + b_FIELD_W - b_R) - x
+        elif x > X0 + FIELD_W - R:
+            x = 2 * (X0 + FIELD_W - R) - x
             vx = -vx
         if g.hits(x, y):
             break
@@ -1485,9 +1498,9 @@ def b_trace(g, ang):
     return pts
 
 
-def b_play(lcd, keys):
+def play(lcd, keys):
     level, score = 1, 0
-    g = b_Game(level, score)
+    g = Game(level, score)
     ang = 0.0
     turn = 0.0
     shot = None                      # [x, y, vx, vy, färg]
@@ -1497,7 +1510,7 @@ def b_play(lcd, keys):
     shake = Shake()
     banner = 50
     t = 0
-    lcd.set_bg(b_field_bg)
+    lcd.set_bg(field_bg)
     keys.wait_release()
     while True:
         t0 = time.ticks_ms()
@@ -1505,7 +1518,7 @@ def b_play(lcd, keys):
         if keys.menu():
             if pause(lcd, keys):
                 return None
-            lcd.set_bg(b_field_bg)
+            lcd.set_bg(field_bg)
         # Sikta (snabbare ju längre man håller)
         if keys.held(K0) or keys.held(K1):
             turn = min(0.06, turn + 0.006)
@@ -1516,7 +1529,7 @@ def b_play(lcd, keys):
         if keys.pressed(K3) and shot is None:
             g.cur, g.nxt = g.nxt, g.cur
         if keys.pressed(K2) and shot is None and banner == 0:
-            shot = [float(b_SHOOT_X), float(b_SHOOT_Y), math.sin(ang) * b_SPEED, -math.cos(ang) * b_SPEED, g.cur]
+            shot = [float(SHOOT_X), float(SHOOT_Y), math.sin(ang) * SPEED, -math.cos(ang) * SPEED, g.cur]
             g.cur = g.nxt
             g.nxt = g.pick()
 
@@ -1524,11 +1537,11 @@ def b_play(lcd, keys):
             for _ in range(2):                       # två delsteg per bild
                 shot[0] += shot[2] / 2
                 shot[1] += shot[3] / 2
-                if shot[0] < b_X0 + b_R:
-                    shot[0] = 2 * (b_X0 + b_R) - shot[0]
+                if shot[0] < X0 + R:
+                    shot[0] = 2 * (X0 + R) - shot[0]
                     shot[2] = -shot[2]
-                elif shot[0] > b_X0 + b_FIELD_W - b_R:
-                    shot[0] = 2 * (b_X0 + b_FIELD_W - b_R) - shot[0]
+                elif shot[0] > X0 + FIELD_W - R:
+                    shot[0] = 2 * (X0 + FIELD_W - R) - shot[0]
                     shot[2] = -shot[2]
                 if g.hits(shot[0], shot[1]):
                     cell = g.snap(shot[0], shot[1])
@@ -1541,19 +1554,19 @@ def b_play(lcd, keys):
                     if len(group) >= 3:
                         y0 = g.y0()
                         for r, c in group:
-                            x, y = b_cell_xy(r, c, y0)
-                            parts.burst(x, y, b_B_MAIN[ci], 6, 2.5, 14)
+                            x, y = cell_xy(r, c, y0)
+                            parts.burst(x, y, B_MAIN[ci], 6, 2.5, 14)
                             g.grid[r][c] = 0
                         gain = len(group) * 10
                         drops = g.floating()
                         for r, c in drops:
-                            x, y = b_cell_xy(r, c, y0)
+                            x, y = cell_xy(r, c, y0)
                             falling.append([x, y, random.uniform(-2.5, -0.5), g.grid[r][c] - 1,
                                             random.uniform(-1.2, 1.2)])
                             g.grid[r][c] = 0
                         gain += len(drops) * 30 * (1 + len(drops) // 4)
                         g.score += gain
-                        cx, cy = b_cell_xy(cell[0], cell[1], y0)
+                        cx, cy = cell_xy(cell[0], cell[1], y0)
                         pops.add(cx, cy - 8, "+%d" % gain, YELLOW if not drops else CYAN)
                         shake.hit(2 + len(drops) * 0.6)
                     else:
@@ -1566,11 +1579,11 @@ def b_play(lcd, keys):
             if g.empty():
                 bonus = 500 + g.level * 200
                 g.score += bonus
-                b_level_banner(lcd, keys, g.level, bonus)
-                g = b_Game(g.level + 1, g.score)
+                level_banner(lcd, keys, g.level, bonus)
+                g = Game(g.level + 1, g.score)
                 falling = []
                 banner = 40
-                lcd.set_bg(b_field_bg)
+                lcd.set_bg(field_bg)
             elif shot is None and g.lost():
                 return g.score
 
@@ -1585,38 +1598,38 @@ def b_play(lcd, keys):
         lcd.load_bg()
         y0 = g.y0()
         if g.drop:
-            lcd.fill_rect(b_X0, 0, b_FIELD_W, y0, rgb(60, 50, 120))
+            lcd.fill_rect(X0, 0, FIELD_W, y0, rgb(60, 50, 120))
             for i in range(g.drop):
-                lcd.hline(b_X0, 6 + i * b_RH + b_RH - 1, b_FIELD_W, rgb(90, 80, 160))
-        for r in range(b_ROWS):
+                lcd.hline(X0, 6 + i * RH + RH - 1, FIELD_W, rgb(90, 80, 160))
+        for r in range(ROWS):
             row = g.grid[r]
-            for c in range(b_ncols(r)):
+            for c in range(ncols(r)):
                 v = row[c]
                 if v:
-                    x, y = b_cell_xy(r, c, y0)
-                    b_draw_bubble(lcd, x + ox, y + oy, v - 1)
+                    x, y = cell_xy(r, c, y0)
+                    draw_bubble(lcd, x + ox, y + oy, v - 1)
         # Siktlinje
         if shot is None:
-            for i, (x, y) in enumerate(b_trace(g, ang)):
+            for i, (x, y) in enumerate(trace(g, ang)):
                 if (i + t // 3) % 2 == 0:
-                    lcd.fill_rect(x - 1, y - 1, 2, 2, b_B_LIGHT[g.cur])
+                    lcd.fill_rect(x - 1, y - 1, 2, 2, B_LIGHT[g.cur])
         # Kanon
         ca, sa = math.sin(ang), -math.cos(ang)
         for k in (-1, 0, 1):
-            lcd.line(b_SHOOT_X + k, b_SHOOT_Y, int(b_SHOOT_X + ca * 26) + k, int(b_SHOOT_Y + sa * 26), GRAY)
-        lcd.ellipse(b_SHOOT_X, b_SHOOT_Y + 8, 18, 10, rgb(60, 50, 120), True)
+            lcd.line(SHOOT_X + k, SHOOT_Y, int(SHOOT_X + ca * 26) + k, int(SHOOT_Y + sa * 26), GRAY)
+        lcd.ellipse(SHOOT_X, SHOOT_Y + 8, 18, 10, rgb(60, 50, 120), True)
         if shot is None:
-            b_draw_bubble(lcd, b_SHOOT_X, b_SHOOT_Y, g.cur)
+            draw_bubble(lcd, SHOOT_X, SHOOT_Y, g.cur)
         else:
-            b_draw_bubble(lcd, int(shot[0]), int(shot[1]), shot[4])
+            draw_bubble(lcd, int(shot[0]), int(shot[1]), shot[4])
         for f in falling:
-            b_draw_bubble(lcd, int(f[0]), int(f[1]), f[3])
+            draw_bubble(lcd, int(f[0]), int(f[1]), f[3])
         parts.draw(lcd, ox, oy)
         pops.draw(lcd, ox, oy)
         # Sidopaneler
         big_text(lcd, str(g.score), 8, 24, WHITE, 2 if g.score < 10000 else 1)
         big_text(lcd, str(g.level), 8, 74, YELLOW, 3)
-        b_draw_bubble(lcd, W - 34, 44, g.nxt, 12)
+        draw_bubble(lcd, W - 34, 44, g.nxt, 12)
         lcd.text("3 byt", W - 56, 64, DIM)
         for i in range(g.shots_per_drop):
             c = RED if i < g.shots else DIM
@@ -1629,46 +1642,44 @@ def b_play(lcd, keys):
         frame_wait(t0)
 
 
-def b_level_banner(lcd, keys, level, bonus):
+def level_banner(lcd, keys, level, bonus):
     for t in range(60):
         t0 = time.ticks_ms()
-        lcd.fill_rect(b_X0, 80, b_FIELD_W, 70, BG)
-        lcd.rect(b_X0, 80, b_FIELD_W, 70, YELLOW)
-        stext(lcd, "RENSAT!", 92, GREEN, 3, cx=b_X0 + b_FIELD_W // 2)
-        ctext(lcd, "Bonus +%d" % bonus, 128, YELLOW, 1, cx=b_X0 + b_FIELD_W // 2)
+        lcd.fill_rect(X0, 80, FIELD_W, 70, BG)
+        lcd.rect(X0, 80, FIELD_W, 70, YELLOW)
+        stext(lcd, "RENSAT!", 92, GREEN, 3, cx=X0 + FIELD_W // 2)
+        ctext(lcd, "Bonus +%d" % bonus, 128, YELLOW, 1, cx=X0 + FIELD_W // 2)
         lcd.show()
         frame_wait(t0)
 
 
-def b_demo(lcd, t):
+def demo(lcd, t):
     for i in range(14):
         x = (i * 47 + int(t * (0.5 + (i % 3) * 0.3))) % (W + 40) - 20
         y = 60 + int(40 * math.sin(t * 0.03 + i)) + (i * 31) % 90
-        b_draw_bubble(lcd, x, y, i % 6, 7 + i % 4)
+        draw_bubble(lcd, x, y, i % 6, 7 + i % 4)
 
 
-def b_main(lcd, keys):
+def main():
+    lcd, keys = init()
     while True:
         if not title(lcd, keys, "BUBBLOR", MAGENTA,
                      ("Fa tre i samma farg att", "sitta ihop sa spricker de!", "",
                       "Losa bubblor ramlar = extrapoang.", "Taket sanks efter nagra skott."),
-                     "bubblor", ("sikta", "sikta", "byt", "skjut"), b_demo):
+                     "bubblor", ("sikta", "sikta", "byt", "skjut"), demo):
             back()
         while True:
             gc.collect()
-            score = b_play(lcd, keys)
+            score = play(lcd, keys)
             if score is None:
                 break
             if not result(lcd, keys, "GAME OVER", str(score), "bubblor", score, MAGENTA):
                 back()
 
 
-
-
-# ==============================================================
-# MINIGOLF
-# ==============================================================
-# MINIGOLF - 9 hål för Pico Arcade
+main()
+''',
+    'ny_minigolf.py': r'''# MINIGOLF - 9 hål för Pico Arcade
 #
 #   KEY0 (uppe vänster)  = sikta åt vänster (håll inne)
 #   KEY1 (uppe höger)    = sikta åt höger (håll inne)
@@ -1678,124 +1689,126 @@ def b_main(lcd, keys):
 #
 # Sand bromsar, vatten ger ett straffslag och pilarna visar sluttningar.
 # Försök klara alla hål på så få slag som möjligt.
+# Uppackad från nyaspel.py, ändra i nyaspel.py i stället.
 
+from ny_lib import *
 
-g_TS = 4                         # rutstorlek i pixlar
-g_GW, g_GH = W // g_TS, H // g_TS
-g_WALL, g_GRASS, g_SAND, g_WATER, g_SL_N, g_SL_E, g_SL_S, g_SL_W = range(8)
-g_SLOPE_DIR = {g_SL_N: (0, -1), g_SL_E: (1, 0), g_SL_S: (0, 1), g_SL_W: (-1, 0)}
-g_BALL_R = 3
-g_CUP_R = 5
-g_BLADE = 20                     # väderkvarnens vinglängd
-g_TOP = 16                       # överst finns poängraden
+TS = 4                         # rutstorlek i pixlar
+GW, GH = W // TS, H // TS
+WALL, GRASS, SAND, WATER, SL_N, SL_E, SL_S, SL_W = range(8)
+SLOPE_DIR = {SL_N: (0, -1), SL_E: (1, 0), SL_S: (0, 1), SL_W: (-1, 0)}
+BALL_R = 3
+CUP_R = 5
+BLADE = 20                     # väderkvarnens vinglängd
+TOP = 16                       # överst finns poängraden
 
 # Varje hål: namn, par, utslag, hål, ytor [(typ, x, y, b, h)], väderkvarnar [(x, y)]
-g_HOLES = (
+HOLES = (
     ("Rakt fram", 2, (60, 120), (262, 120),
-     [(g_GRASS, 40, 100, 240, 40)], []),
+     [(GRASS, 40, 100, 240, 40)], []),
     ("Kroken", 2, (60, 172), (222, 58),
-     [(g_GRASS, 40, 152, 200, 40), (g_GRASS, 200, 40, 40, 152)], []),
+     [(GRASS, 40, 152, 200, 40), (GRASS, 200, 40, 40, 152)], []),
     ("Sandfallan", 3, (50, 120), (272, 120),
-     [(g_GRASS, 28, 60, 264, 120), (g_SAND, 128, 72, 64, 96), (g_WALL, 152, 104, 16, 32)], []),
+     [(GRASS, 28, 60, 264, 120), (SAND, 128, 72, 64, 96), (WALL, 152, 104, 16, 32)], []),
     ("Bron", 3, (50, 68), (264, 68),
-     [(g_GRASS, 28, 40, 264, 164), (g_WATER, 112, 40, 64, 124), (g_SAND, 216, 120, 48, 40)], []),
+     [(GRASS, 28, 40, 264, 164), (WATER, 112, 40, 64, 124), (SAND, 216, 120, 48, 40)], []),
     ("Backen", 2, (60, 120), (262, 120),
-     [(g_GRASS, 40, 92, 240, 56), (g_SL_W, 120, 92, 84, 56)], []),
+     [(GRASS, 40, 92, 240, 56), (SL_W, 120, 92, 84, 56)], []),
     ("Vaderkvarnen", 3, (60, 120), (264, 120),
-     [(g_GRASS, 40, 88, 240, 64)], [(164, 120)]),
+     [(GRASS, 40, 88, 240, 64)], [(164, 120)]),
     ("Sicksack", 3, (50, 58), (270, 186),
-     [(g_GRASS, 28, 40, 224, 36), (g_GRASS, 216, 40, 36, 100), (g_GRASS, 68, 104, 184, 36),
-      (g_GRASS, 68, 104, 36, 100), (g_GRASS, 68, 168, 224, 36)], []),
+     [(GRASS, 28, 40, 224, 36), (GRASS, 216, 40, 36, 100), (GRASS, 68, 104, 184, 36),
+      (GRASS, 68, 104, 36, 100), (GRASS, 68, 168, 224, 36)], []),
     ("Muren", 2, (80, 72), (240, 72),
-     [(g_GRASS, 40, 40, 240, 168), (g_WALL, 152, 40, 16, 124), (g_SL_S, 176, 164, 64, 40)], []),
+     [(GRASS, 40, 40, 240, 168), (WALL, 152, 40, 16, 124), (SL_S, 176, 164, 64, 40)], []),
     ("Finalen", 4, (52, 56), (268, 196),
-     [(g_GRASS, 24, 36, 272, 184), (g_WATER, 116, 84, 76, 56), (g_SAND, 56, 148, 64, 44),
-      (g_SL_N, 204, 148, 56, 44), (g_WALL, 24, 120, 60, 12)], [(244, 96)]),
+     [(GRASS, 24, 36, 272, 184), (WATER, 116, 84, 76, 56), (SAND, 56, 148, 64, 44),
+      (SL_N, 204, 148, 56, 44), (WALL, 24, 120, 60, 12)], [(244, 96)]),
 )
 
-g_C_GRASS = (rgb(60, 175, 70), rgb(52, 160, 62))
-g_C_SAND = (rgb(230, 205, 140), rgb(215, 188, 120))
-g_C_WATER = (rgb(40, 110, 210), rgb(60, 140, 230))
-g_C_SLOPE = (rgb(70, 160, 110), rgb(62, 148, 100))
-g_C_WOOD = rgb(140, 90, 50)
-g_C_WOOD_L = rgb(185, 130, 75)
-g_C_OUT = rgb(18, 40, 30)
-g_C_OUT2 = rgb(22, 48, 36)
+C_GRASS = (rgb(60, 175, 70), rgb(52, 160, 62))
+C_SAND = (rgb(230, 205, 140), rgb(215, 188, 120))
+C_WATER = (rgb(40, 110, 210), rgb(60, 140, 230))
+C_SLOPE = (rgb(70, 160, 110), rgb(62, 148, 100))
+C_WOOD = rgb(140, 90, 50)
+C_WOOD_L = rgb(185, 130, 75)
+C_OUT = rgb(18, 40, 30)
+C_OUT2 = rgb(22, 48, 36)
 
 
-def g_build(hole):
-    grid = bytearray(g_GW * g_GH)
+def build(hole):
+    grid = bytearray(GW * GH)
     for typ, x, y, w, h in hole[4]:
-        for gy in range(y // g_TS, (y + h) // g_TS):
-            for gx in range(x // g_TS, (x + w) // g_TS):
-                if 0 <= gx < g_GW and 0 <= gy < g_GH:
-                    grid[gy * g_GW + gx] = typ
+        for gy in range(y // TS, (y + h) // TS):
+            for gx in range(x // TS, (x + w) // TS):
+                if 0 <= gx < GW and 0 <= gy < GH:
+                    grid[gy * GW + gx] = typ
     return grid
 
 
-def g_tile(grid, x, y):
-    gx, gy = int(x) // g_TS, int(y) // g_TS
-    if gx < 0 or gy < 0 or gx >= g_GW or gy >= g_GH:
-        return g_WALL
-    return grid[gy * g_GW + gx]
+def tile(grid, x, y):
+    gx, gy = int(x) // TS, int(y) // TS
+    if gx < 0 or gy < 0 or gx >= GW or gy >= GH:
+        return WALL
+    return grid[gy * GW + gx]
 
 
-def g_course_bg(grid, hole):
+def course_bg(grid, hole):
     def bg(lcd):
-        for gy in range(g_GH):
-            for gx in range(g_GW):
-                v = grid[gy * g_GW + gx]
-                x, y = gx * g_TS, gy * g_TS
-                if v == g_WALL:
+        for gy in range(GH):
+            for gx in range(GW):
+                v = grid[gy * GW + gx]
+                x, y = gx * TS, gy * TS
+                if v == WALL:
                     near = False
                     for oy in (-1, 0, 1):
                         for ox in (-1, 0, 1):
                             nx, ny = gx + ox, gy + oy
-                            if 0 <= nx < g_GW and 0 <= ny < g_GH and grid[ny * g_GW + nx] != g_WALL:
+                            if 0 <= nx < GW and 0 <= ny < GH and grid[ny * GW + nx] != WALL:
                                 near = True
                     if near:
-                        lcd.fill_rect(x, y, g_TS, g_TS, g_C_WOOD)
-                        lcd.pixel(x + 1, y + 1, g_C_WOOD_L)
+                        lcd.fill_rect(x, y, TS, TS, C_WOOD)
+                        lcd.pixel(x + 1, y + 1, C_WOOD_L)
                     else:
-                        lcd.fill_rect(x, y, g_TS, g_TS, g_C_OUT if (gx + gy) % 2 else g_C_OUT2)
-                elif v == g_GRASS:
-                    lcd.fill_rect(x, y, g_TS, g_TS, g_C_GRASS[(gx // 3) % 2])
-                elif v == g_SAND:
-                    lcd.fill_rect(x, y, g_TS, g_TS, g_C_SAND[(gx * 7 + gy * 3) % 2])
+                        lcd.fill_rect(x, y, TS, TS, C_OUT if (gx + gy) % 2 else C_OUT2)
+                elif v == GRASS:
+                    lcd.fill_rect(x, y, TS, TS, C_GRASS[(gx // 3) % 2])
+                elif v == SAND:
+                    lcd.fill_rect(x, y, TS, TS, C_SAND[(gx * 7 + gy * 3) % 2])
                     if (gx * 5 + gy * 11) % 7 == 0:
                         lcd.pixel(x + 1, y + 2, rgb(190, 160, 100))
-                elif v == g_WATER:
-                    lcd.fill_rect(x, y, g_TS, g_TS, g_C_WATER[0])
+                elif v == WATER:
+                    lcd.fill_rect(x, y, TS, TS, C_WATER[0])
                     if (gx + gy * 2) % 5 == 0:
-                        lcd.hline(x, y + 2, 3, g_C_WATER[1])
+                        lcd.hline(x, y + 2, 3, C_WATER[1])
                 else:
-                    lcd.fill_rect(x, y, g_TS, g_TS, g_C_SLOPE[(gx // 3) % 2])
+                    lcd.fill_rect(x, y, TS, TS, C_SLOPE[(gx // 3) % 2])
         # Pilar på sluttningarna
-        for gy in range(1, g_GH, 4):
-            for gx in range(1, g_GW, 4):
-                v = grid[gy * g_GW + gx]
-                if v in g_SLOPE_DIR:
-                    dx, dy = g_SLOPE_DIR[v]
-                    cx, cy = gx * g_TS + 2, gy * g_TS + 2
+        for gy in range(1, GH, 4):
+            for gx in range(1, GW, 4):
+                v = grid[gy * GW + gx]
+                if v in SLOPE_DIR:
+                    dx, dy = SLOPE_DIR[v]
+                    cx, cy = gx * TS + 2, gy * TS + 2
                     c = rgb(170, 230, 180)
                     lcd.line(cx - dx * 4, cy - dy * 4, cx + dx * 4, cy + dy * 4, c)
                     lcd.line(cx + dx * 4, cy + dy * 4, cx + dx * 1 - dy * 3, cy + dy * 1 + dx * 3, c)
                     lcd.line(cx + dx * 4, cy + dy * 4, cx + dx * 1 + dy * 3, cy + dy * 1 - dx * 3, c)
         # Hålet och utslagsplatsen
         hx, hy = hole[3]
-        lcd.ellipse(hx, hy, g_CUP_R + 1, g_CUP_R + 1, rgb(30, 90, 40), True)
-        lcd.ellipse(hx, hy, g_CUP_R, g_CUP_R, rgb(10, 20, 10), True)
+        lcd.ellipse(hx, hy, CUP_R + 1, CUP_R + 1, rgb(30, 90, 40), True)
+        lcd.ellipse(hx, hy, CUP_R, CUP_R, rgb(10, 20, 10), True)
         tx, ty = hole[2]
         lcd.fill_rect(tx - 6, ty - 6, 12, 12, rgb(80, 195, 90))
-        lcd.fill_rect(0, 0, W, g_TOP, rgb(10, 20, 16))
+        lcd.fill_rect(0, 0, W, TOP, rgb(10, 20, 16))
     return bg
 
 
-def g_blade_hit(ball, cx, cy, ang):
+def blade_hit(ball, cx, cy, ang):
     """Väderkvarnens vingar: returnerar normal (nx, ny) om bollen träffar."""
     for k in range(4):
         a = ang + k * 1.5708
-        ex, ey = cx + math.cos(a) * g_BLADE, cy + math.sin(a) * g_BLADE
+        ex, ey = cx + math.cos(a) * BLADE, cy + math.sin(a) * BLADE
         # närmaste punkt på vingen
         vx, vy = ex - cx, ey - cy
         px, py = ball[0] - cx, ball[1] - cy
@@ -1807,25 +1820,25 @@ def g_blade_hit(ball, cx, cy, ang):
         qx, qy = cx + vx * tt, cy + vy * tt
         dx, dy = ball[0] - qx, ball[1] - qy
         d = math.sqrt(dx * dx + dy * dy)
-        if d < g_BALL_R + 2:
+        if d < BALL_R + 2:
             if d < 0.01:
                 return (1.0, 0.0), 1.0
-            return (dx / d, dy / d), g_BALL_R + 2 - d
+            return (dx / d, dy / d), BALL_R + 2 - d
     return None, 0
 
 
-def g_draw_mill(fb, cx, cy, ang):
+def draw_mill(fb, cx, cy, ang):
     fb.ellipse(cx, cy + 3, 9, 4, rgb(30, 60, 30), True)
     for k in range(4):
         a = ang + k * 1.5708
-        ex, ey = int(cx + math.cos(a) * g_BLADE), int(cy + math.sin(a) * g_BLADE)
+        ex, ey = int(cx + math.cos(a) * BLADE), int(cy + math.sin(a) * BLADE)
         for o in (-1, 0, 1):
             fb.line(cx + o, cy, ex + o, ey, WHITE if k % 2 else RED)
     fb.ellipse(cx, cy, 3, 3, rgb(120, 80, 50), True)
     fb.pixel(cx, cy, YELLOW)
 
 
-def g_label_for(strokes, par):
+def label_for(strokes, par):
     if strokes == 1:
         return "HOLE IN ONE!", YELLOW
     d = strokes - par
@@ -1834,10 +1847,10 @@ def g_label_for(strokes, par):
         d, ("+%d" % d, RED) if d > 0 else ("SUPER!", MAGENTA))
 
 
-def g_play_hole(lcd, keys, n, hole, card):
+def play_hole(lcd, keys, n, hole, card):
     name, par, tee, cup, _, mills = hole
-    grid = g_build(hole)
-    lcd.set_bg(g_course_bg(grid, hole))
+    grid = build(hole)
+    lcd.set_bg(course_bg(grid, hole))
     ball = [float(tee[0]), float(tee[1]), 0.0, 0.0]
     last = (ball[0], ball[1])
     aim = math.atan2(cup[1] - tee[1], cup[0] - tee[0])
@@ -1859,7 +1872,7 @@ def g_play_hole(lcd, keys, n, hole, card):
         if keys.menu():
             if pause(lcd, keys):
                 return None
-            lcd.set_bg(g_course_bg(grid, hole))
+            lcd.set_bg(course_bg(grid, hole))
         moving = abs(ball[2]) > 0.02 or abs(ball[3]) > 0.02
         mill_ang += 0.045
         if not moving and sink == 0 and banner < 40:
@@ -1887,19 +1900,19 @@ def g_play_hole(lcd, keys, n, hole, card):
         if moving and sink == 0:
             for _ in range(4):
                 nx = ball[0] + ball[2] / 4
-                if g_tile(grid, nx + (g_BALL_R if ball[2] > 0 else -g_BALL_R), ball[1]) == g_WALL:
+                if tile(grid, nx + (BALL_R if ball[2] > 0 else -BALL_R), ball[1]) == WALL:
                     ball[2] = -ball[2] * 0.78
-                    parts.burst(ball[0], ball[1], g_C_WOOD_L, 3, 1.2, 8)
+                    parts.burst(ball[0], ball[1], C_WOOD_L, 3, 1.2, 8)
                 else:
                     ball[0] = nx
                 ny = ball[1] + ball[3] / 4
-                if g_tile(grid, ball[0], ny + (g_BALL_R if ball[3] > 0 else -g_BALL_R)) == g_WALL:
+                if tile(grid, ball[0], ny + (BALL_R if ball[3] > 0 else -BALL_R)) == WALL:
                     ball[3] = -ball[3] * 0.78
-                    parts.burst(ball[0], ball[1], g_C_WOOD_L, 3, 1.2, 8)
+                    parts.burst(ball[0], ball[1], C_WOOD_L, 3, 1.2, 8)
                 else:
                     ball[1] = ny
                 for mx, my in mills:
-                    nrm, depth = g_blade_hit(ball, mx, my, mill_ang)
+                    nrm, depth = blade_hit(ball, mx, my, mill_ang)
                     if nrm:
                         ball[0] += nrm[0] * depth
                         ball[1] += nrm[1] * depth
@@ -1909,18 +1922,18 @@ def g_play_hole(lcd, keys, n, hole, card):
                             ball[3] -= 1.8 * dot * nrm[1]
                         ball[2] += -nrm[1] * 0.4
                         ball[3] += nrm[0] * 0.4
-            g = g_tile(grid, ball[0], ball[1])
-            fr = 0.93 if g == g_SAND else 0.982
+            g = tile(grid, ball[0], ball[1])
+            fr = 0.93 if g == SAND else 0.982
             ball[2] *= fr
             ball[3] *= fr
-            if g in g_SLOPE_DIR:
-                dx, dy = g_SLOPE_DIR[g]
+            if g in SLOPE_DIR:
+                dx, dy = SLOPE_DIR[g]
                 ball[2] += dx * 0.09
                 ball[3] += dy * 0.09
             sp = math.sqrt(ball[2] ** 2 + ball[3] ** 2)
-            if sp < 0.06 and g not in g_SLOPE_DIR:
+            if sp < 0.06 and g not in SLOPE_DIR:
                 ball[2] = ball[3] = 0.0
-            if g == g_WATER:
+            if g == WATER:
                 parts.burst(ball[0], ball[1], WHITE, 14, 2, 18)
                 pops.add(ball[0], ball[1] - 8, "PLASK! +1", CYAN)
                 strokes += 1
@@ -1929,14 +1942,14 @@ def g_play_hole(lcd, keys, n, hole, card):
             # Hålet
             dx, dy = ball[0] - cup[0], ball[1] - cup[1]
             dist = math.sqrt(dx * dx + dy * dy)
-            if dist < g_CUP_R:
+            if dist < CUP_R:
                 if sp < 4.2:
                     sink = 1
                     ball[2] = ball[3] = 0.0
                 else:                                   # för fort, studsar ur
                     ball[2] *= 0.7
                     ball[3] *= 0.7
-            elif dist < g_CUP_R + 6 and sp < 2.5:         # hålet drar lite i bollen
+            elif dist < CUP_R + 6 and sp < 2.5:         # hålet drar lite i bollen
                 ball[2] -= dx / dist * 0.08
                 ball[3] -= dy / dist * 0.08
         if sink:
@@ -1962,7 +1975,7 @@ def g_play_hole(lcd, keys, n, hole, card):
         # --- Rita ---
         lcd.load_bg()
         for mx, my in mills:
-            g_draw_mill(lcd, mx, my, mill_ang)
+            draw_mill(lcd, mx, my, mill_ang)
         # Flagga
         fx, fy = cup
         lcd.vline(fx, fy - 24, 24, WHITE)
@@ -1982,13 +1995,13 @@ def g_play_hole(lcd, keys, n, hole, card):
                 c = mix((80, 230, 90), (255, 60, 60), power)
                 lcd.fill_rect(W // 2 - bw // 2, H - 10, int(bw * power), 4, c)
         if sink == 0 or sink < 8:
-            lcd.ellipse(int(ball[0]) + 1, int(ball[1]) + 2, g_BALL_R, g_BALL_R - 1, rgb(20, 60, 25), True)
-            lcd.ellipse(int(ball[0]), int(ball[1]), g_BALL_R, g_BALL_R, WHITE, True)
+            lcd.ellipse(int(ball[0]) + 1, int(ball[1]) + 2, BALL_R, BALL_R - 1, rgb(20, 60, 25), True)
+            lcd.ellipse(int(ball[0]), int(ball[1]), BALL_R, BALL_R, WHITE, True)
             lcd.pixel(int(ball[0]) - 1, int(ball[1]) - 1, rgb(220, 220, 220))
         parts.draw(lcd)
         pops.draw(lcd)
         total = sum(card[:n])
-        tpar = sum(h[1] for h in g_HOLES[:n])
+        tpar = sum(h[1] for h in HOLES[:n])
         lcd.text("HAL %d/9" % (n + 1), 4, 4, WHITE)
         lcd.text("PAR %d" % par, 84, 4, GRAY)
         lcd.text("SLAG %d" % strokes, 148, 4, YELLOW)
@@ -2001,17 +2014,17 @@ def g_play_hole(lcd, keys, n, hole, card):
             ctext(lcd, "HAL %d - %s" % (n + 1, name), 102, WHITE, 1)
             ctext(lcd, "PAR %d" % par, 118, YELLOW, 2)
         if sink > 8:
-            txt, col = g_label_for(strokes, par)
+            txt, col = label_for(strokes, par)
             stext(lcd, txt, 96, col, 3 if len(txt) < 11 else 2)
         lcd.show()
         t += 1
         frame_wait(t0)
 
 
-def g_scorecard(lcd, card):
+def scorecard(lcd, card):
     lcd.fill(BG)
     stext(lcd, "SCOREKORT", 10, YELLOW, 3)
-    for i, h in enumerate(g_HOLES):
+    for i, h in enumerate(HOLES):
         y = 50 + i * 16
         lcd.text("%d %s" % (i + 1, h[0]), 40, y, WHITE)
         lcd.text("par %d" % h[1], 190, y, GRAY)
@@ -2021,33 +2034,34 @@ def g_scorecard(lcd, card):
     lcd.show()
 
 
-def g_demo(lcd, t):
+def demo(lcd, t):
     # En boll som rullar mot ett hål nertill
     y = 160
-    lcd.fill_rect(30, y - 14, 260, 28, g_C_GRASS[0])
-    lcd.rect(28, y - 16, 264, 32, g_C_WOOD)
-    lcd.ellipse(268, y, g_CUP_R, g_CUP_R, rgb(10, 20, 10), True)
+    lcd.fill_rect(30, y - 14, 260, 28, C_GRASS[0])
+    lcd.rect(28, y - 16, 264, 32, C_WOOD)
+    lcd.ellipse(268, y, CUP_R, CUP_R, rgb(10, 20, 10), True)
     lcd.vline(268, y - 22, 22, WHITE)
     lcd.fill_rect(269, y - 22, 10, 6, RED)
     p = (t % 120) / 120
     bx = int(40 + (268 - 40) * (1 - (1 - p) ** 2))
     if p < 0.95:
-        lcd.ellipse(bx, y, g_BALL_R, g_BALL_R, WHITE, True)
+        lcd.ellipse(bx, y, BALL_R, BALL_R, WHITE, True)
 
 
-def g_main(lcd, keys):
+def main():
+    lcd, keys = init()
     while True:
         if not title(lcd, keys, "MINIGOLF", GREEN,
                      ("9 hal med sand, vatten,", "backar och vaderkvarnar.", "",
                       "Hall 2 for att ladda slaget,", "slapp for att sla."),
-                     "golf", ("sikta", "sikta", "noga", "sla"), g_demo, "Basta runda: %d slag"):
+                     "golf", ("sikta", "sikta", "noga", "sla"), demo, "Basta runda: %d slag"):
             back()
         while True:
             gc.collect()
-            card = [0] * len(g_HOLES)
+            card = [0] * len(HOLES)
             quit_ = False
-            for n, hole in enumerate(g_HOLES):
-                s = g_play_hole(lcd, keys, n, hole, card)
+            for n, hole in enumerate(HOLES):
+                s = play_hole(lcd, keys, n, hole, card)
                 if s is None:
                     quit_ = True
                     break
@@ -2055,8 +2069,8 @@ def g_main(lcd, keys):
             if quit_:
                 break
             total = sum(card)
-            par = sum(h[1] for h in g_HOLES)
-            g_scorecard(lcd, card)
+            par = sum(h[1] for h in HOLES)
+            scorecard(lcd, card)
             time.sleep_ms(2500)
             diff = total - par
             extra = "Par %d  (%s)" % (par, ("+%d" % diff) if diff > 0 else ("%d" % diff) if diff else "E")
@@ -2065,17 +2079,27 @@ def g_main(lcd, keys):
                 back()
 
 
+main()
+''',
+    'ny_meny.py': r'''# Liten meny för de nya spelen (när nyaspel.py körs direkt).
+# Uppackad från nyaspel.py, ändra i nyaspel.py i stället.
+from ny_lib import *
+
+GAME_LIST = (("meteor", "METEORER", CYAN), ("turbo", "TURBO", ORANGE),
+             ("bubblor", "BUBBLOR", MAGENTA), ("minigolf", "MINIGOLF", GREEN))
 
 
-# ===============================================================
-# Välj spel
-# ===============================================================
-GAME_LIST = (("meteor", "METEORER", CYAN, m_main), ("turbo", "TURBO", ORANGE, t_main),
-             ("bubblor", "BUBBLOR", MAGENTA, b_main), ("minigolf", "MINIGOLF", GREEN, g_main))
+def start(name):
+    try:
+        with open(START_FILE, "w") as f:
+            f.write("ny_" + name)
+    except Exception:
+        pass
+    machine.soft_reset()
 
 
-def pick_menu(lcd, keys):
-    """Egen meny om filen körs direkt."""
+def main():
+    lcd, keys = init()
     sel = 0
     t = 0
     stars = Stars(50)
@@ -2089,7 +2113,7 @@ def pick_menu(lcd, keys):
         if keys.pressed(K1):
             sel = (sel + 1) % len(GAME_LIST)
         if keys.pressed(K2):
-            return GAME_LIST[sel][0]
+            start(GAME_LIST[sel][0])
         if keys.pressed(K3):
             back()
         lcd.load_bg()
@@ -2108,18 +2132,49 @@ def pick_menu(lcd, keys):
         frame_wait(t0)
 
 
-def run():
-    lcd, keys = init()
-    name = SCORES.pop("_spel", None)
+main()
+''',
+}
+
+
+def unpack():
+    """Skriver ut spelfilerna om de saknas eller är av en äldre version."""
+    try:
+        with open("ny_version.txt") as f:
+            if f.read().strip() == VERSION:
+                return
+    except OSError:
+        pass
+    print("Packar upp nya spel...")
+    for name, src in FILES.items():
+        with open(name, "w") as f:
+            f.write(src)
+        print("  ", name)
+    with open("ny_version.txt", "w") as f:
+        f.write(VERSION)
+
+
+def chosen():
+    """Vilket spel valdes i arcaden? None = visa menyn."""
+    try:
+        with open("rekord.json") as f:
+            scores = json.load(f)
+    except Exception:
+        return None
+    name = scores.pop("_spel", None)
     if name is not None:
-        save_scores()
-    else:
-        name = pick_menu(lcd, keys)
-    for key, _, _, fn in GAME_LIST:
-        if key == name:
-            fn(lcd, keys)
-    back()
+        try:
+            with open("rekord.json", "w") as f:
+                json.dump(scores, f)
+        except Exception:
+            pass
+    return name
 
 
-# Spelens main() får lcd och keys härifrån i stället för att starta egna
-run()
+unpack()
+_game = chosen()
+FILES = None
+gc.collect()
+with open("starta.txt", "w") as f:
+    f.write("ny_" + _game if _game else "ny_meny")
+machine.soft_reset()                 # startar main.py, som laddar spelet

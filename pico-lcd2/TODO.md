@@ -158,3 +158,10 @@
 - [x] remove picolib/meteor/turbo/bubblor/minigolf .py from repo
 - [x] test all four via the full launcher -> arcade -> game -> back flow (strict mock)
 - [x] docs + git push
+
+## Fix: MemoryError when starting nyaspel.py (all code compiled at once)
+- [x] nyaspel.py becomes self-extracting: sources stored as strings, written once to ny_lib/ny_meteor/ny_turbo/ny_bubblor/ny_minigolf/ny_meny.py
+- [x] version check so updates re-extract; no display buffer needed while extracting
+- [x] dispatch: _spel from rekord.json -> starta.txt "ny_<spel>" -> soft reset -> only that game is loaded
+- [x] test extraction + all four games + direct F5 menu (strict mock)
+- [x] docs + git push

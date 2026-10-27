@@ -87,7 +87,10 @@ Dessutom **Klocka** och **Knapptest**. Rekord sparas på Picon i filen `rekord.j
 ## Nya spel med fyra knappar (`nyaspel.py`)
 
 METEORER, TURBO, BUBBLOR och MINIGOLF ligger alla i filen `nyaspel.py`. Korten finns i arcaden.
-När du väljer ett av dem startar Picon om mjukt och laddar spelet, så att minnet räcker.
+Alla fyra får inte plats i minnet samtidigt, så första gången packar `nyaspel.py` upp sig själv till
+små filer på Picon (`ny_lib.py`, `ny_meteor.py`, `ny_turbo.py`, `ny_bubblor.py`, `ny_minigolf.py`, `ny_meny.py`).
+Sedan laddas bara det spel du valt. Du behöver bara ladda upp `nyaspel.py`, och ändringar görs i den
+(de uppackade filerna skrivs över när versionen ändras).
 KEY3 på spelets titelskärm tar dig tillbaka till samma kort. Håll in alla fyra knapparna för paus.
 Kör du `nyaspel.py` direkt med F5 i Thonny får du en egen liten meny.
 
