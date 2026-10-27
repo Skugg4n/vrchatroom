@@ -31,6 +31,22 @@ except (ImportError, AttributeError):
         return f
 
 W, H = 320, 240
+
+
+import builtins
+
+
+def shared_fb():
+    """Skärmbilden som startmenyn (main.py) har skapat, annars en egen."""
+    fb = getattr(builtins, "PICO_FB", None)
+    return fb if fb is not None else bytearray(W * H * 2)
+
+
+def leave(next_prog=None):
+    """Avsluta utan omstart. Startmenyn tar bort koden ur minnet och
+    startar next_prog (eller visar menyn)."""
+    builtins.PICO_NEXT = next_prog
+    raise SystemExit
 FRAME_MS = 33
 SAVE_FILE = "hoppa.json"
 LONG = 40
@@ -69,7 +85,7 @@ PANTS = rgb(40, 80, 200)
 # ---------------------------------------------------------------
 class LCD(framebuf.FrameBuffer):
     def __init__(self):
-        self.buffer = bytearray(W * H * 2)
+        self.buffer = shared_fb()
         super().__init__(self.buffer, W, H, framebuf.RGB565)
         try:
             self.bg = bytearray(W * H * 2)
@@ -748,7 +764,7 @@ def select(lcd, keys, save, sel):
         if keys.chord_tap and sel <= save["open"]:
             return sel
         if keys.long():
-            machine.soft_reset()                 # tillbaka till startmenyn
+            leave()                              # tillbaka till startmenyn
         th = theme_of(sel)
         top = rgb(*lerp(th[1], (0, 0, 0), 0.5))
         lcd.fill(top)

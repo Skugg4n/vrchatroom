@@ -2,22 +2,35 @@
 # Raspberry Pi Pico 2 + Waveshare Pico-LCD-2 (ST7789, 320x240)
 #
 # Välj vad du vill köra:
-#   0 / 1      = bläddra
-#   0+1 kort   = starta
-# Rör du inget på 10 sekunder startar det du valde senast.
-# I spelen kommer du tillbaka hit genom att hålla in 0+1 i deras meny.
+#   0 / 1           = bläddra
+#   2 eller 0+1     = starta
+# När Picon just har startat och du inte rör något på 10 sekunder
+# startar det du valde senast.
 #
-# Filerna klocka.py, labyrint.py, hoppa.py och main2.py måste ligga på
-# Picon bredvid den här filen.
+# Programmen byts utan omstart: skärmbilden (150 kB) skapas en gång här,
+# och när ett program avslutas tas dess kod bort ur minnet innan nästa
+# laddas. Ett program avslutas med raise SystemExit, och kan be om att
+# ett annat program ska startas efteråt via builtins.PICO_NEXT.
+#
+# Filerna klocka.py, labyrint.py, hoppa.py, main2.py och nyaspel.py måste
+# ligga på Picon bredvid den här filen.
 # OBS: Skärmens inbyggda typsnitt saknar å, ä och ö.
+
+import gc
+gc.collect()
+import builtins
+W, H = 320, 240
+# Skärmbilden skapas allra först, medan minnet är tomt, och delas sedan av
+# alla program. Då blir minnet aldrig för uppstyckat för att få plats.
+builtins.PICO_FB = bytearray(W * H * 2)
+builtins.PICO_NEXT = None
 
 from machine import Pin, SPI, PWM
 import framebuf
 import time
 import json
-import gc
+import sys
 
-W, H = 320, 240
 AUTO_MS = 10_000
 CHOICE_FILE = "meny.json"
 
@@ -27,6 +40,7 @@ PROGRAMS = (
     ("LABYRINT 3D", "Hitta ut ur labyrinten", "labyrint", (190, 80, 255)),
     ("HOPPA!", "Plattformsspel, 10 banor", "hoppa", (255, 200, 40)),
     ("PICO ARCADE", "Pong, Snake, Tetris m.fl.", "main2", (80, 230, 110)),
+    ("NYA SPEL", "Meteorer, Turbo, Golf m.fl.", "nyaspel", (255, 90, 200)),
 )
 
 
@@ -44,7 +58,7 @@ ROW = rgb(16, 16, 26)
 
 class LCD(framebuf.FrameBuffer):
     def __init__(self):
-        self.buffer = bytearray(W * H * 2)
+        self.buffer = builtins.PICO_FB
         super().__init__(self.buffer, W, H, framebuf.RGB565)
         self.cs = Pin(9, Pin.OUT, value=1)
         self.rst = Pin(12, Pin.OUT, value=1)
@@ -110,8 +124,9 @@ def spaced(fb, s, x, y, c, gap=2):
         x += 8 + gap
 
 
-def menu():
-    """Visar menyn och returnerar filnamnet som ska startas."""
+def menu(auto):
+    """Visar menyn och returnerar filnamnet som ska startas.
+    auto = starta det senast valda av sig själv efter 10 s."""
     try:
         with open(CHOICE_FILE) as f:
             sel = json.load(f).get("sel", 0) % len(PROGRAMS)
@@ -121,6 +136,13 @@ def menu():
     k0 = Pin(15, Pin.IN, Pin.PULL_UP)
     k1 = Pin(17, Pin.IN, Pin.PULL_UP)
     k2 = Pin(2, Pin.IN, Pin.PULL_UP)
+    k3 = Pin(3, Pin.IN, Pin.PULL_UP)
+    # Vänta tills alla knappar är släppta (man kan komma hit med knappar nere)
+    lcd.fill(BG)
+    lcd.show()
+    while not (k0.value() and k1.value() and k2.value() and k3.value()):
+        time.sleep_ms(20)
+    time.sleep_ms(60)
     prev = (False, False)
     cnt = [0, 0]
     both = 0
@@ -151,7 +173,7 @@ def menu():
             chorded = False
         prev = now
         left = AUTO_MS - time.ticks_diff(t0, last)
-        if left <= 0:
+        if auto and left <= 0:
             start = True
 
         # --- Rita ---
@@ -159,24 +181,25 @@ def menu():
         big_text(lcd, "PICO", 18, 14, WHITE, 4)
         spaced(lcd, "VAD VILL DU GORA?", 160, 30, TEXT, 1)
         for i, (name, desc, _, col) in enumerate(PROGRAMS):
-            y = 62 + i * 36
+            y = 54 + i * 31
             c = rgb(*col)
             on = i == sel
-            lcd.fill_rect(14, y, W - 28, 30, ROW if on else BG)
-            lcd.fill_rect(14, y, 4, 30, c if on else DIMC)
-            lcd.ellipse(36, y + 15, 6, 6, c if on else DIMC, True)
+            lcd.fill_rect(14, y, W - 28, 29, ROW if on else BG)
+            lcd.fill_rect(14, y, 4, 29, c if on else DIMC)
+            lcd.ellipse(36, y + 14, 6, 6, c if on else DIMC, True)
             if on:
-                big_text(lcd, name, 52, y + 3, WHITE, 2)
-                lcd.text(desc, 52, y + 20, TEXT)
+                big_text(lcd, name, 52, y + 2, WHITE, 2)
+                lcd.text(desc, 52, y + 19, TEXT)
             else:
                 spaced(lcd, name, 52, y + 7, TEXT, 2)
         # Linje som visar när det valda startar av sig själv
-        frac = max(0, left) / AUTO_MS
         c = rgb(*PROGRAMS[sel][3])
-        lcd.hline(14, 214, W - 28, DIMC)
-        lcd.hline(14, 214, int((W - 28) * frac), c)
+        if auto:
+            frac = max(0, left) / AUTO_MS
+            lcd.hline(14, 214, W - 28, DIMC)
+            lcd.hline(14, 214, int((W - 28) * frac), c)
+            lcd.text("%2d" % (max(0, left) // 1000 + 1), W - 30, 224, c)
         lcd.text("0/1 bladdra  2 eller 0+1 start", 14, 224, TEXT)
-        lcd.text("%2d" % (max(0, left) // 1000 + 1), W - 30, 224, c)
         lcd.show()
         if start:
             break
@@ -195,18 +218,54 @@ def menu():
     return PROGRAMS[sel][2]
 
 
-def direct():
-    """Ett spel i arcaden ber om att startas direkt (eller tillbaka till arcaden)."""
-    import os
+def show_error(e):
+    """Visar ett fel på skärmen och väntar på en knapp."""
+    import io
+    sys.print_exception(e)
+    buf = io.StringIO()
+    sys.print_exception(e, buf)
+    lcd = LCD()
+    lcd.fill(rgb(120, 0, 0))
+    lcd.text("FEL! Tryck pa en knapp", 4, 4, WHITE)
+    y = 20
+    for line in buf.getvalue().split("\n"):
+        while line and y < H - 8:
+            lcd.text(line[:39], 4, y, WHITE)
+            line = line[39:]
+            y += 10
+    lcd.show()
+    pins = [Pin(p, Pin.IN, Pin.PULL_UP) for p in (15, 17, 2, 3)]
+    time.sleep_ms(500)
+    while all(p.value() for p in pins):
+        time.sleep_ms(20)
+    while not all(p.value() for p in pins):
+        time.sleep_ms(20)
+
+
+BASE = list(sys.modules)
+
+
+def run(name):
+    """Kör ett program. När det är klart tas dess kod bort ur minnet."""
+    gc.collect()
     try:
-        with open("starta.txt") as f:
-            name = f.read().strip()
-        os.remove("starta.txt")
-        return name or None
-    except OSError:
-        return None
+        __import__(name)
+    except SystemExit:
+        pass
+    except Exception as e:
+        show_error(e)
+    finally:
+        for m in list(sys.modules):
+            if m not in BASE:
+                del sys.modules[m]
+        gc.collect()
 
 
-_name = direct() or menu()
-gc.collect()                 # frigör menyns minne innan programmet laddas
-__import__(_name)
+first = True
+while True:
+    nxt = builtins.PICO_NEXT
+    builtins.PICO_NEXT = None
+    if not nxt:
+        nxt = menu(first)
+    first = False
+    run(nxt)

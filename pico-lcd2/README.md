@@ -4,9 +4,12 @@ Startmenyn som körs när Picon får ström. Härifrån når du allt:
 **KLOCKA**, **LABYRINT 3D**, **HOPPA!** och **PICO ARCADE**.
 
 - 0 / 1 bläddrar, KEY2 eller 0+1 (kort) startar.
-- Rör du inget på 10 sekunder startar det du valde senast (valet sparas i `meny.json`).
-- Tillbaka till menyn: håll in 0+1 i spelens egna menyer (Labyrint: titelskärmen, Hoppa: banväljaren,
-  Arcade: startsidan). I klockan håller du in 0+1 i 3 sekunder och trycker sedan KEY1.
+- Precis när Picon har startat: rör du inget på 10 sekunder startar det du valde senast (sparas i `meny.json`).
+- Tillbaka till menyn: håll in 0+1 i spelens egna menyer (Labyrint: titelskärmen, Hoppa: banväljaren),
+  tryck KEY3 i arcaden, och i klockan håller du in 0+1 i 3 sekunder och trycker sedan KEY1.
+- **Inga omstarter:** startmenyn skapar skärmbilden (150 kB) en gång direkt vid start och alla program delar den.
+  När ett program avslutas tas dess kod bort ur minnet innan nästa laddas, så du kan byta hur mycket du vill.
+  Fungerar både med och utan Thonny.
 
 **Lägg alla dessa filer på Picon** (i Thonny: *Visa → Filer*, markera filerna, högerklicka → *Ladda upp till /*):
 `main.py`, `klocka.py`, `labyrint.py`, `hoppa.py`, `main2.py`, `nyaspel.py`
@@ -92,9 +95,6 @@ små filer på Picon (`ny_lib.py`, `ny_meteor.py`, `ny_turbo.py`, `ny_bubblor.py
 Sedan laddas bara det spel du valt. Du behöver bara ladda upp `nyaspel.py` (spara den på Picon),
 och de uppackade filerna skrivs över när versionen ändras.
 
-**Tips om Thonny:** att byta mellan program (till exempel från ett spel tillbaka till arcaden) görs med en mjuk
-omstart av Picon. När Thonny kör en fil med F5 stannar Picon efter omstarten (`MPY: soft reboot`) i stället för
-att starta `main.py`. Stäng Thonny eller använd en USB-laddare, så fungerar allt av sig själv.
 KEY3 på spelets titelskärm tar dig tillbaka till samma kort. Håll in alla fyra knapparna för paus.
 Kör du `nyaspel.py` direkt med F5 i Thonny får du en egen liten meny.
 
@@ -133,7 +133,7 @@ De översta knapparna, KEY0 och KEY1, används till det man gör mest.
 
 | Spel | KEY0 | KEY1 | KEY2 | KEY3 |
 |------|------|------|------|------|
-| Startsida | föregående | nästa | spela | |
+| Startsida | föregående | nästa | spela | till startmenyn |
 | Pong, 1 spelare | upp | ner | | paus |
 | Pong, 2 spelare | P1 upp | P2 upp | P1 ner | P2 ner |
 | Snake | sväng vänster | sväng höger | | paus |

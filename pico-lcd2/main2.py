@@ -28,6 +28,22 @@ except (ImportError, AttributeError):
 W, H = 320, 240
 VW, VH = 240, 320        # stående läge
 
+
+import builtins
+
+
+def shared_fb():
+    """Skärmbilden som startmenyn (main.py) har skapat, annars en egen."""
+    fb = getattr(builtins, "PICO_FB", None)
+    return fb if fb is not None else bytearray(W * H * 2)
+
+
+def leave(next_prog=None):
+    """Avsluta utan omstart. Startmenyn tar bort koden ur minnet och
+    startar next_prog (eller visar menyn)."""
+    builtins.PICO_NEXT = next_prog
+    raise SystemExit
+
 # Klockfrekvens. 250 MHz går bra på de flesta Pico 2. Sätt till None
 # om Picon beter sig konstigt, då körs den i vanliga 150 MHz.
 OVERCLOCK_HZ = 250_000_000
@@ -94,7 +110,7 @@ SHADOW = rgb(40, 0, 70)
 # ---------------------------------------------------------------
 class LCD(framebuf.FrameBuffer):
     def __init__(self):
-        self.buffer = bytearray(W * H * 2)
+        self.buffer = shared_fb()
         super().__init__(self.buffer, W, H, framebuf.RGB565)
         # Samma minne sett som en stående skärm (240x320)
         self.pfb = framebuf.FrameBuffer(self.buffer, VW, VH, framebuf.RGB565)
@@ -229,8 +245,10 @@ class Keys:
 
     # --- Handlingar som fungerar i både 4- och 2-knappsläget ---
     def sel(self):
-        """Välj / ok / starta."""
-        return self.chord_tap if TWO_KEYS else self.pressed(K_A)
+        """Välj / ok / starta (bara om ingen annan knapp hålls in)."""
+        if TWO_KEYS:
+            return self.chord_tap
+        return self.pressed(K_A) and sum(self.now) == 1
 
     def back(self):
         """Tillbaka / paus (finns inte i 2-knappsläget)."""
@@ -2585,15 +2603,10 @@ def launch(game):
         SCORES["_sel"] = LAST_SEL[0]
         SCORES["_spel"] = game
         save_scores()
-        try:
-            with open("starta.txt", "w") as f:
-                f.write("nyaspel")
-        except Exception:
-            pass
         lcd.fill(BG)
         center_text(lcd, "LADDAR...", 112, WHITE, 2)
         lcd.show()
-        machine.soft_reset()
+        leave("nyaspel")
     return run
 
 
@@ -2744,7 +2757,8 @@ def run_menu(lcd, keys, sel=0):
     lcd.set_bg(draw_gradient)
     t = 0
     off = 0          # förskjutning när ett nytt kort glider in
-    hint = "%d/%d: bladdra     %s: spela" % (K_X, K_Y, SEL_TXT)
+    hint = ("%d/%d: bladdra     %s: spela" % (K_X, K_Y, SEL_TXT) if TWO_KEYS
+            else "%d/%d bladdra   %d spela   %d meny" % (K_X, K_Y, K_A, K_B))
     keys.wait_release()
     last_key = time.ticks_ms()
     while True:
@@ -2765,8 +2779,8 @@ def run_menu(lcd, keys, sel=0):
             off = W
         if keys.sel():
             return sel
-        if keys.exit_requested():
-            machine.soft_reset()                 # tillbaka till startmenyn
+        if keys.back() or keys.exit_requested():
+            leave()                              # tillbaka till startmenyn
 
         g = GAMES[sel]
         accent = g[3]

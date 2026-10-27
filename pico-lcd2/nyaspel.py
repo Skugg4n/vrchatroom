@@ -15,8 +15,10 @@
 
 import json
 import gc
+import sys
+import builtins
 
-VERSION = "3"
+VERSION = "4"
 
 
 def unpack():
@@ -75,14 +77,29 @@ def start():
     if not unpack():
         return
     game = chosen()
-    if game is None:
-        import ny_meny
-        game = ny_meny.choose()          # menyns skärmminne frigörs när den är klar
-        if game is None:
-            import ny_lib
-            ny_lib.back()
-    gc.collect()
-    __import__("ny_" + game)          # laddar och startar bara det valda spelet
+    first = "ny_" + game if game else "ny_meny"
+    if __name__ != "__main__":
+        # Startad från startmenyn (main.py): den laddar spelet åt oss.
+        builtins.PICO_NEXT = first
+        raise SystemExit
+    # Körd direkt med F5 i Thonny: byt mellan spelen här i stället.
+    if getattr(builtins, "PICO_FB", None) is None:
+        builtins.PICO_FB = bytearray(320 * 240 * 2)
+    base = list(sys.modules)
+    name = first
+    while name and name.startswith("ny_"):
+        builtins.PICO_NEXT = None
+        gc.collect()
+        try:
+            __import__(name)
+        except SystemExit:
+            pass
+        for m in list(sys.modules):
+            if m not in base:
+                del sys.modules[m]
+        gc.collect()
+        name = builtins.PICO_NEXT
+    print("Klart! Starta main.py for att komma till arcaden.")
 
 
 start()
@@ -120,10 +137,24 @@ start()
 #|        return f
 #|
 #|W, H = 320, 240
+#|
+#|import builtins
+#|
+#|
+#|def shared_fb():
+#|    """Skärmbilden som startmenyn (main.py) har skapat, annars en egen."""
+#|    fb = getattr(builtins, "PICO_FB", None)
+#|    return fb if fb is not None else bytearray(W * H * 2)
+#|
+#|
+#|def leave(next_prog=None):
+#|    """Avsluta utan omstart. Startmenyn tar bort koden ur minnet och
+#|    startar next_prog (eller visar menyn)."""
+#|    builtins.PICO_NEXT = next_prog
+#|    raise SystemExit
 #|KEY_PINS = (15, 17, 2, 3)
 #|K0, K1, K2, K3 = 0, 1, 2, 3
 #|SCORE_FILE = "rekord.json"
-#|START_FILE = "starta.txt"
 #|
 #|
 #|def rgb(r, g, b):
@@ -164,7 +195,7 @@ start()
 #|# ---------------------------------------------------------------
 #|class LCD(framebuf.FrameBuffer):
 #|    def __init__(self):
-#|        self.buffer = bytearray(W * H * 2)
+#|        self.buffer = shared_fb()
 #|        super().__init__(self.buffer, W, H, framebuf.RGB565)
 #|        try:
 #|            self.bg = bytearray(W * H * 2)
@@ -495,13 +526,8 @@ start()
 #|
 #|
 #|def back():
-#|    """Tillbaka till Pico Arcade (startar om Picon mjukt)."""
-#|    try:
-#|        with open(START_FILE, "w") as f:
-#|            f.write("main2")
-#|    except Exception:
-#|        pass
-#|    machine.soft_reset()
+#|    """Tillbaka till Pico Arcade (utan omstart)."""
+#|    leave("main2")
 #|
 #|
 #|# ---------------------------------------------------------------
@@ -2164,8 +2190,7 @@ start()
 #|             ("bubblor", "BUBBLOR", MAGENTA), ("minigolf", "MINIGOLF", GREEN))
 #|
 #|
-#|def choose():
-#|    """Returnerar valt spel, eller None för tillbaka till arcaden."""
+#|def main():
 #|    lcd, keys = init()
 #|    sel = 0
 #|    t = 0
@@ -2183,9 +2208,9 @@ start()
 #|            lcd.fill(BG)
 #|            ctext(lcd, "LADDAR...", 112, WHITE, 2)
 #|            lcd.show()
-#|            return GAME_LIST[sel][0]
+#|            leave("ny_" + GAME_LIST[sel][0])
 #|        if keys.pressed(K3):
-#|            return None
+#|            back()
 #|        lcd.load_bg()
 #|        stars.draw(lcd)
 #|        wave(lcd, "NYA SPEL", 20, 4, RAINBOW, t)
@@ -2200,3 +2225,6 @@ start()
 #|        lcd.show()
 #|        t += 1
 #|        frame_wait(t0)
+#|
+#|
+#|main()

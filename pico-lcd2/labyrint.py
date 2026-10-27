@@ -32,6 +32,22 @@ except (ImportError, AttributeError):
         return f
 
 W, H = 320, 240
+
+
+import builtins
+
+
+def shared_fb():
+    """Skärmbilden som startmenyn (main.py) har skapat, annars en egen."""
+    fb = getattr(builtins, "PICO_FB", None)
+    return fb if fb is not None else bytearray(W * H * 2)
+
+
+def leave(next_prog=None):
+    """Avsluta utan omstart. Startmenyn tar bort koden ur minnet och
+    startar next_prog (eller visar menyn)."""
+    builtins.PICO_NEXT = next_prog
+    raise SystemExit
 FRAME_MS = 40
 SAVE_FILE = "labyrint.json"
 LONG = 40                    # håll 0+1 så här många bilder = meny
@@ -65,7 +81,7 @@ SHADOW = rgb(30, 0, 50)
 # ---------------------------------------------------------------
 class LCD(framebuf.FrameBuffer):
     def __init__(self):
-        self.buffer = bytearray(W * H * 2)
+        self.buffer = shared_fb()
         super().__init__(self.buffer, W, H, framebuf.RGB565)
         try:
             self.bg = bytearray(W * H * 2)
@@ -747,7 +763,7 @@ def title(lcd, keys, save):
         if keys.chord_tap:
             return save["level"] if opts[sel].startswith("FORT") else 1
         if keys.long():
-            machine.soft_reset()                 # tillbaka till startmenyn
+            leave()                              # tillbaka till startmenyn
         # Bakgrund: en vy som sakta snurrar
         ang += 0.012
         dx, dy = math.cos(ang), math.sin(ang)

@@ -171,3 +171,16 @@
 - [x] nyaspel.py: payload stored as comment lines (no RAM while compiling), unpack by reading its own file
 - [x] start the chosen game directly by import (no soft reset); ny_meny returns its choice and frees its buffers first
 - [x] test (strict mock) + docs + git push
+
+## Rework: no soft resets, one shared frame buffer (MemoryError in TURBO, can only play one game)
+- [x] main.py: allocate the 150 kB frame buffer first (builtins.PICO_FB), then loop: menu/next program -> import -> on exit unload its modules + gc
+- [x] programs return with SystemExit and builtins.PICO_NEXT instead of machine.soft_reset()
+- [x] LCD classes in main2/klocka/labyrint/hoppa/ny_lib reuse PICO_FB (fallback: allocate own when run alone)
+- [x] arcade cards for new games -> PICO_NEXT = "nyaspel" (+ _spel); games back -> PICO_NEXT = "main2"
+- [x] nyaspel.py: unpack, then hand over via PICO_NEXT (or run its own small chain when started with F5)
+- [x] remove starta.txt usage; error screen + key to continue instead of hanging
+- [x] test: play several programs in a row in one boot (strict mock), check soft_reset is never called
+- [x] docs + git push
+- [x] fix: arcade KEY3 = back to start menu; KEY2 only selects when no other key is held (all-4 hold launched the card)
+- [x] fix: start menu waits for all keys released (leaving with 0+1 restarted the same program)
+- [x] start menu: NYA SPEL entry; auto-start only right after boot

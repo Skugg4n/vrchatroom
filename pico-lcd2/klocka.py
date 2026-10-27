@@ -21,6 +21,22 @@ import framebuf
 import time
 
 W, H = 320, 240
+
+
+import builtins
+
+
+def shared_fb():
+    """Skärmbilden som startmenyn (main.py) har skapat, annars en egen."""
+    fb = getattr(builtins, "PICO_FB", None)
+    return fb if fb is not None else bytearray(W * H * 2)
+
+
+def leave(next_prog=None):
+    """Avsluta utan omstart. Startmenyn tar bort koden ur minnet och
+    startar next_prog (eller visar menyn)."""
+    builtins.PICO_NEXT = next_prog
+    raise SystemExit
 FRAME_MS = 100                # 10 bilder per sekund räcker gott
 NIGHT = (22, 7)               # nattläge mellan 22 och 07
 DAY_LIGHT, NIGHT_LIGHT = 70, 12
@@ -65,7 +81,7 @@ def theme(hour):
 # ---------------------------------------------------------------
 class LCD(framebuf.FrameBuffer):
     def __init__(self):
-        self.buffer = bytearray(W * H * 2)
+        self.buffer = shared_fb()
         super().__init__(self.buffer, W, H, framebuf.RGB565)
         self.cs = Pin(9, Pin.OUT, value=1)
         self.rst = Pin(12, Pin.OUT, value=1)
@@ -289,7 +305,7 @@ def choose_action(lcd):
         if k0.value() == 0:
             return True
         if k1.value() == 0:
-            machine.soft_reset()                 # startar om main.py (startmenyn)
+            leave()                              # tillbaka till startmenyn
         lcd.fill(BG)
         spaced(lcd, "VAD VILL DU GORA?", 50, TEXT)
         spaced(lcd, "KEY0   STALL IN TIDEN", 100, WHITE, 2)
