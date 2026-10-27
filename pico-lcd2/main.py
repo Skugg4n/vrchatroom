@@ -120,6 +120,7 @@ def menu():
     lcd = LCD()
     k0 = Pin(15, Pin.IN, Pin.PULL_UP)
     k1 = Pin(17, Pin.IN, Pin.PULL_UP)
+    k2 = Pin(2, Pin.IN, Pin.PULL_UP)
     prev = (False, False)
     cnt = [0, 0]
     both = 0
@@ -132,6 +133,8 @@ def menu():
         start = False
         if now[0] or now[1]:
             last = t0
+        if k2.value() == 0:                      # KEY2 startar också
+            start = True
         b = now[0] and now[1]
         if b:
             chorded = True
@@ -172,7 +175,7 @@ def menu():
         c = rgb(*PROGRAMS[sel][3])
         lcd.hline(14, 214, W - 28, DIMC)
         lcd.hline(14, 214, int((W - 28) * frac), c)
-        lcd.text("0/1 bladdra   0+1 starta", 14, 224, TEXT)
+        lcd.text("0/1 bladdra  2 eller 0+1 start", 14, 224, TEXT)
         lcd.text("%2d" % (max(0, left) // 1000 + 1), W - 30, 224, c)
         lcd.show()
         if start:
@@ -192,6 +195,18 @@ def menu():
     return PROGRAMS[sel][2]
 
 
-_name = menu()
+def direct():
+    """Ett spel i arcaden ber om att startas direkt (eller tillbaka till arcaden)."""
+    import os
+    try:
+        with open("starta.txt") as f:
+            name = f.read().strip()
+        os.remove("starta.txt")
+        return name or None
+    except OSError:
+        return None
+
+
+_name = direct() or menu()
 gc.collect()                 # frigör menyns minne innan programmet laddas
 __import__(_name)

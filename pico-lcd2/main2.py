@@ -55,7 +55,7 @@ SNAKE_LEFT, SNAKE_RIGHT = 0, 1
 #   0 + 1 samtidigt   = välj, starta, vrid
 #   håll 0 + 1 länge  = gå ur spelet
 # Sätt till False när alla fyra knapparna fungerar igen.
-TWO_KEYS = True
+TWO_KEYS = False
 LONG_FRAMES = 40          # håll 0+1 så här länge (40 = ca 1,3 s) för att gå ur
 
 EXIT_FRAMES = 8           # så länge alla fyra måste hållas (8 = ca 0,25 s)
@@ -2572,6 +2572,116 @@ def pv_clock(fb, x, y, t):
     center_text(fb, txt, y + 24, RAINBOW[(t // 6) % len(RAINBOW)], 4, cx=x + PV_W // 2)
 
 
+# ---------------------------------------------------------------
+# Spel i egna filer (meteor.py, turbo.py, bubblor.py, minigolf.py).
+# De laddas fräscht efter en mjuk omstart så att minnet räcker.
+# ---------------------------------------------------------------
+LAST_SEL = [0]
+
+
+def launch(module):
+    def run(lcd, keys):
+        SCORES["_sel"] = LAST_SEL[0]
+        save_scores()
+        try:
+            with open("starta.txt", "w") as f:
+                f.write(module)
+        except Exception:
+            pass
+        lcd.fill(BG)
+        center_text(lcd, "LADDAR...", 112, WHITE, 2)
+        lcd.show()
+        machine.soft_reset()
+    return run
+
+
+PV_ROCK = [(math.cos(i / 9 * 6.283) * (8 + (i * 37) % 5), math.sin(i / 9 * 6.283) * (8 + (i * 37) % 5))
+           for i in range(9)]
+
+
+def pv_meteor(fb, x, y, t):
+    fb.fill_rect(x, y, PV_W, PV_H, BLACK)
+    for i in range(16):
+        fb.pixel(x + (i * 53) % PV_W, y + (i * 31) % PV_H, STAR_COLS[i % 3])
+    for k in range(3):
+        cx = x + 20 + ((k * 61 + t * (1 + k)) % 150)
+        cy = y + 16 + (k * 23) % 46
+        a = t * 0.04 * (k + 1)
+        ca, sa = math.cos(a), math.sin(a)
+        s = 1.0 + k * 0.4
+        pts = [(cx + (px * ca - py * sa) * s, cy + (px * sa + py * ca) * s) for px, py in PV_ROCK]
+        for i in range(len(pts)):
+            p, q = pts[i - 1], pts[i]
+            fb.line(int(p[0]), int(p[1]), int(q[0]), int(q[1]), rgb(170, 180, 240))
+    a = t * 0.05
+    sx, sy = x + 90, y + 40
+    ship = ((9, 0), (-6, -6), (-3, 0), (-6, 6))
+    pts = [(sx + px * math.cos(a) - py * math.sin(a), sy + px * math.sin(a) + py * math.cos(a)) for px, py in ship]
+    for i in range(4):
+        p, q = pts[i - 1], pts[i]
+        fb.line(int(p[0]), int(p[1]), int(q[0]), int(q[1]), CYAN)
+    d = (t * 5) % 60
+    fb.fill_rect(int(sx + math.cos(a) * (12 + d)), int(sy + math.sin(a) * (12 + d)), 2, 2, YELLOW)
+
+
+def pv_turbo(fb, x, y, t):
+    for yy in range(30):
+        fb.hline(x, y + yy, PV_W, rgb(60 + yy * 3, 130 + yy * 2, 240))
+    fb.ellipse(x + 140, y + 12, 7, 7, rgb(255, 245, 190), True)
+    for i in range(48):
+        yy = y + 30 + i
+        z = 48.0 / (i + 1)
+        w = int(80 / z) + 3
+        cx = x + 90 + int(math.sin(t * 0.04) * 30 / z)
+        s = int(z * 1.4 + t * 0.6) & 1
+        fb.hline(x, yy, PV_W, rgb(40, 170, 50) if s else rgb(30, 145, 40))
+        clip_rect(fb, cx - w - w // 6, yy, 2 * (w + w // 6), 1, WHITE if s else RED, x, x + PV_W)
+        clip_rect(fb, cx - w, yy, 2 * w, 1, rgb(110, 110, 118), x, x + PV_W)
+    cx = x + 90 + int(math.sin(t * 0.08) * 12)
+    fb.fill_rect(cx - 14, y + 62, 28, 9, RED)
+    fb.fill_rect(cx - 10, y + 56, 20, 7, RED)
+    fb.fill_rect(cx - 8, y + 57, 16, 4, rgb(40, 50, 80))
+    fb.fill_rect(cx - 15, y + 70, 6, 5, BLACK)
+    fb.fill_rect(cx + 9, y + 70, 6, 5, BLACK)
+
+
+PV_BCOL = (RED, YELLOW, GREEN, BLUE, PURPLE, CYAN)
+
+
+def pv_bubblor(fb, x, y, t):
+    fb.fill_rect(x, y, PV_W, PV_H, rgb(14, 12, 34))
+    for r in range(4):
+        for c in range(13 - r % 2):
+            if (r * 5 + c * 3) % 7 != 0 or r < 2:
+                cx = x + 8 + c * 13 + (6 if r % 2 else 0)
+                cy = y + 7 + r * 11
+                col = PV_BCOL[(r * 3 + c * 2) % 6]
+                fb.ellipse(cx, cy, 6, 6, col, True)
+                fb.pixel(cx - 2, cy - 2, WHITE)
+    a = math.sin(t * 0.05) * 0.9
+    bx, by = x + 90, y + 72
+    fb.line(bx, by, int(bx + math.sin(a) * 18), int(by - math.cos(a) * 18), GRAY)
+    p = (t % 40) / 40
+    fb.ellipse(int(bx + math.sin(a) * 60 * p), int(by - math.cos(a) * 60 * p), 6, 6, PV_BCOL[(t // 40) % 6], True)
+
+
+def pv_golf(fb, x, y, t):
+    fb.fill_rect(x, y, PV_W, PV_H, rgb(18, 40, 30))
+    fb.fill_rect(x + 10, y + 24, 160, 34, rgb(140, 90, 50))
+    for i in range(0, 156, 12):
+        fb.fill_rect(x + 12 + i, y + 26, 6, 30, rgb(60, 175, 70))
+        fb.fill_rect(x + 18 + i, y + 26, 6, 30, rgb(52, 160, 62))
+    fb.fill_rect(x + 70, y + 30, 30, 22, rgb(230, 205, 140))
+    fb.ellipse(x + 150, y + 41, 5, 5, BLACK, True)
+    fb.vline(x + 150, y + 18, 23, WHITE)
+    fb.fill_rect(x + 151, y + 18, 9, 6, RED)
+    p = (t % 90) / 90
+    bx = int(x + 24 + 126 * (1 - (1 - p) ** 2))
+    by = y + 41 + int(math.sin(p * 9) * 4 * (1 - p))
+    if p < 0.97:
+        fb.ellipse(bx, by, 3, 3, WHITE, True)
+
+
 # (namn, beskrivning, rekordnyckel, färg, förhandsvisning, starta, stående?)
 GAMES = (
     ("PONG", "Mot datorn/en kompis", "pong", CYAN, pv_pong, game_pong, False),
@@ -2584,6 +2694,10 @@ GAMES = (
     ("RUNNER", "Spring, byt fil", "runner", ORANGE, pv_runner, game_runner, True),
     ("SPACE", "Skjut ner rymdvarelser", "space", CYAN, pv_space, game_space, True),
     ("STACK", "Bygg ett hogt torn", "stack", YELLOW, pv_stack, game_stack, True),
+    ("METEORER", "Asteroids i vektorstil", "meteor", CYAN, pv_meteor, launch("meteor"), False),
+    ("TURBO", "Racing i 3D", "turbo", ORANGE, pv_turbo, launch("turbo"), False),
+    ("BUBBLOR", "Sprack bubblorna", "bubblor", MAGENTA, pv_bubblor, launch("bubblor"), False),
+    ("MINIGOLF", "9 hal, sla pa par", "golf", GREEN, pv_golf, launch("minigolf"), False),
     ("KLOCKA", "Stall in klockan", None, BLUE, pv_clock, game_clock, False),
     ("KNAPPTEST", "Hitta dina knappar", None, MAGENTA, pv_keys, game_keytest, False),
 )
@@ -2611,6 +2725,9 @@ def draw_card(fb, g, x, t):
     if key == "pong":
         if key in SCORES:
             line = "Storsta vinst: +%d" % SCORES[key]
+    elif key == "golf":
+        if key in SCORES:
+            line = "Basta runda: %d slag" % SCORES[key]
     elif key:
         line = "Rekord: %d" % SCORES.get(key, 0)
     if line:
@@ -2723,9 +2840,10 @@ def main():
             print("Klockan ar", "%02d:%02d" % _rtc.datetime()[4:6])
         else:
             time_setup(lcd, keys)
-        sel = 0
+        sel = SCORES.get("_sel", 0) % len(GAMES)    # samma kort som senast
         while True:
             sel = run_menu(lcd, keys, sel)
+            LAST_SEL[0] = sel
             gc.collect()
             try:
                 GAMES[sel][5](lcd, keys)

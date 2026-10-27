@@ -136,3 +136,18 @@
 - [x] labyrint: `bytearray([1]) * n` -> TypeError on MicroPython; use bytearray([1] * n)
 - [x] test: stricter mock bytearray (no `in`, no `*`) reproduces both bugs; all programs pass with it
 - [x] git push
+
+## Round 6: 4 keys again, four polished games for Pico Arcade
+- [x] main2: TWO_KEYS = False
+- [x] picolib.py: shared LCD/Keys(4)/text/stars/scores/title/result/pause/back-to-arcade
+- [x] launch flow: arcade card -> starta.txt + soft_reset -> main.py imports module; exit -> back to arcade on same card
+- [x] game: METEORER (asteroids: inertia, wrap, splitting rocks, UFO, waves, extra lives, particles, shake, popups)
+- [x] game: TURBO (pseudo-3D racer: curves, hills, traffic, roadside sprites, checkpoints, timer, speedo)
+- [x] game: BUBBLOR (bubble shooter: hex grid, aim guide with bounce, pop 3+, falling orphans, ceiling drop, levels)
+- [x] game: MINIGOLF (9 holes: walls, sand, water, slopes, windmills, power meter, par scoring)
+- [x] arcade: cards with animated previews + records for the four games
+- [x] test: strict MicroPython-like mock for all, screenshots
+- [x] docs + git push
+- [x] golf: shorter windmill blades, wider hole 6, hub is a tunnel (only blades block)
+- [x] turbo: clip preview road inside the card; title road below key legend
+- [x] launcher: KEY2 also starts; starta.txt for direct start/back
