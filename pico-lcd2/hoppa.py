@@ -33,19 +33,23 @@ except (ImportError, AttributeError):
 W, H = 320, 240
 
 
-import builtins
+try:
+    import delat           # skapas av startmenyn (main.py)
+except ImportError:
+    delat = None
 
 
 def shared_fb():
     """Skärmbilden som startmenyn (main.py) har skapat, annars en egen."""
-    fb = getattr(builtins, "PICO_FB", None)
+    fb = delat.FB if delat else None
     return fb if fb is not None else bytearray(W * H * 2)
 
 
 def leave(next_prog=None):
     """Avsluta utan omstart. Startmenyn tar bort koden ur minnet och
     startar next_prog (eller visar menyn)."""
-    builtins.PICO_NEXT = next_prog
+    if delat:
+        delat.NEXT = next_prog
     raise SystemExit
 FRAME_MS = 33
 SAVE_FILE = "hoppa.json"

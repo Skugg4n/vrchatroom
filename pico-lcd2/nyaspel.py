@@ -16,9 +16,12 @@
 import json
 import gc
 import sys
-import builtins
+try:
+    import delat           # skapas av startmenyn (main.py)
+except ImportError:
+    delat = None
 
-VERSION = "4"
+VERSION = "5"
 
 
 def unpack():
@@ -78,17 +81,18 @@ def start():
         return
     game = chosen()
     first = "ny_" + game if game else "ny_meny"
-    if __name__ != "__main__":
+    if __name__ != "__main__" and delat:
         # Startad från startmenyn (main.py): den laddar spelet åt oss.
-        builtins.PICO_NEXT = first
+        delat.NEXT = first
         raise SystemExit
     # Körd direkt med F5 i Thonny: byt mellan spelen här i stället.
-    if getattr(builtins, "PICO_FB", None) is None:
-        builtins.PICO_FB = bytearray(320 * 240 * 2)
+    if delat and delat.FB is None:
+        delat.FB = bytearray(320 * 240 * 2)
     base = list(sys.modules)
     name = first
     while name and name.startswith("ny_"):
-        builtins.PICO_NEXT = None
+        if delat:
+            delat.NEXT = None
         gc.collect()
         try:
             __import__(name)
@@ -98,7 +102,7 @@ def start():
             if m not in base:
                 del sys.modules[m]
         gc.collect()
-        name = builtins.PICO_NEXT
+        name = delat.NEXT if delat else None
     print("Klart! Starta main.py for att komma till arcaden.")
 
 
@@ -138,19 +142,23 @@ start()
 #|
 #|W, H = 320, 240
 #|
-#|import builtins
+#|try:
+#|    import delat           # skapas av startmenyn (main.py)
+#|except ImportError:
+#|    delat = None
 #|
 #|
 #|def shared_fb():
 #|    """Skärmbilden som startmenyn (main.py) har skapat, annars en egen."""
-#|    fb = getattr(builtins, "PICO_FB", None)
+#|    fb = delat.FB if delat else None
 #|    return fb if fb is not None else bytearray(W * H * 2)
 #|
 #|
 #|def leave(next_prog=None):
 #|    """Avsluta utan omstart. Startmenyn tar bort koden ur minnet och
 #|    startar next_prog (eller visar menyn)."""
-#|    builtins.PICO_NEXT = next_prog
+#|    if delat:
+#|        delat.NEXT = next_prog
 #|    raise SystemExit
 #|KEY_PINS = (15, 17, 2, 3)
 #|K0, K1, K2, K3 = 0, 1, 2, 3

@@ -184,3 +184,11 @@
 - [x] fix: arcade KEY3 = back to start menu; KEY2 only selects when no other key is held (all-4 hold launched the card)
 - [x] fix: start menu waits for all keys released (leaving with 0+1 restarted the same program)
 - [x] start menu: NYA SPEL entry; auto-start only right after boot
+
+## Fix: nothing at all on power-up
+- [x] likely cause: assigning attributes on `builtins` is not allowed on the Pico (crash before the display starts)
+- [x] shared state in a small module `delat.py` (created by main.py if missing): FB, NEXT
+- [x] main.py: show a splash first, cap the key-release wait, show any boot error on screen
+- [x] update main2/klocka/labyrint/hoppa/ny_lib/ny_meny/nyaspel to use delat
+- [x] check: no `builtins` writes left in any file; rerun both session tests
+- [x] docs + git push

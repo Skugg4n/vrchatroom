@@ -9,7 +9,7 @@ Startmenyn som körs när Picon får ström. Härifrån når du allt:
   tryck KEY3 i arcaden, och i klockan håller du in 0+1 i 3 sekunder och trycker sedan KEY1.
 - **Inga omstarter:** startmenyn skapar skärmbilden (150 kB) en gång direkt vid start och alla program delar den.
   När ett program avslutas tas dess kod bort ur minnet innan nästa laddas, så du kan byta hur mycket du vill.
-  Fungerar både med och utan Thonny.
+  Fungerar både med och utan Thonny. Den lilla filen `delat.py` skapas automatiskt, låt den vara kvar.
 
 **Lägg alla dessa filer på Picon** (i Thonny: *Visa → Filer*, markera filerna, högerklicka → *Ladda upp till /*):
 `main.py`, `klocka.py`, `labyrint.py`, `hoppa.py`, `main2.py`, `nyaspel.py`

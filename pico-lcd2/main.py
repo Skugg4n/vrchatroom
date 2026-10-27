@@ -10,7 +10,8 @@
 # Programmen byts utan omstart: skärmbilden (150 kB) skapas en gång här,
 # och när ett program avslutas tas dess kod bort ur minnet innan nästa
 # laddas. Ett program avslutas med raise SystemExit, och kan be om att
-# ett annat program ska startas efteråt via builtins.PICO_NEXT.
+# ett annat program ska startas efteråt via delat.NEXT. Den lilla filen
+# delat.py skapas automatiskt av den här filen.
 #
 # Filerna klocka.py, labyrint.py, hoppa.py, main2.py och nyaspel.py måste
 # ligga på Picon bredvid den här filen.
@@ -18,12 +19,18 @@
 
 import gc
 gc.collect()
-import builtins
 W, H = 320, 240
+try:
+    import delat
+except ImportError:
+    with open("delat.py", "w") as _f:
+        _f.write("# Delas mellan programmen. Skapas av main.py, ändra inte.\nFB = None\nNEXT = None\n")
+    import delat
 # Skärmbilden skapas allra först, medan minnet är tomt, och delas sedan av
 # alla program. Då blir minnet aldrig för uppstyckat för att få plats.
-builtins.PICO_FB = bytearray(W * H * 2)
-builtins.PICO_NEXT = None
+if delat.FB is None:
+    delat.FB = bytearray(W * H * 2)
+delat.NEXT = None
 
 from machine import Pin, SPI, PWM
 import framebuf
@@ -58,7 +65,7 @@ ROW = rgb(16, 16, 26)
 
 class LCD(framebuf.FrameBuffer):
     def __init__(self):
-        self.buffer = builtins.PICO_FB
+        self.buffer = delat.FB
         super().__init__(self.buffer, W, H, framebuf.RGB565)
         self.cs = Pin(9, Pin.OUT, value=1)
         self.rst = Pin(12, Pin.OUT, value=1)
@@ -137,10 +144,14 @@ def menu(auto):
     k1 = Pin(17, Pin.IN, Pin.PULL_UP)
     k2 = Pin(2, Pin.IN, Pin.PULL_UP)
     k3 = Pin(3, Pin.IN, Pin.PULL_UP)
-    # Vänta tills alla knappar är släppta (man kan komma hit med knappar nere)
+    # Vänta tills alla knappar är släppta (man kan komma hit med knappar
+    # nere), men högst en sekund ifall en knapp skulle hänga sig.
     lcd.fill(BG)
+    big_text(lcd, "PICO", 18, 14, WHITE, 4)
     lcd.show()
-    while not (k0.value() and k1.value() and k2.value() and k3.value()):
+    for _ in range(50):
+        if k0.value() and k1.value() and k2.value() and k3.value():
+            break
         time.sleep_ms(20)
     time.sleep_ms(60)
     prev = (False, False)
@@ -263,9 +274,13 @@ def run(name):
 
 first = True
 while True:
-    nxt = builtins.PICO_NEXT
-    builtins.PICO_NEXT = None
+    nxt = delat.NEXT
+    delat.NEXT = None
     if not nxt:
-        nxt = menu(first)
+        try:
+            nxt = menu(first)
+        except Exception as e:           # visa felet i stället för en svart skärm
+            show_error(e)
+            continue
     first = False
     run(nxt)
