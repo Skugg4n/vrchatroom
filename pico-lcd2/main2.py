@@ -2573,19 +2573,21 @@ def pv_clock(fb, x, y, t):
 
 
 # ---------------------------------------------------------------
-# Spel i egna filer (meteor.py, turbo.py, bubblor.py, minigolf.py).
+# Spel i filen nyaspel.py (Meteorer, Turbo, Bubblor, Minigolf).
 # De laddas fräscht efter en mjuk omstart så att minnet räcker.
 # ---------------------------------------------------------------
 LAST_SEL = [0]
 
 
-def launch(module):
+def launch(game):
+    """Startar ett av spelen i nyaspel.py."""
     def run(lcd, keys):
         SCORES["_sel"] = LAST_SEL[0]
+        SCORES["_spel"] = game
         save_scores()
         try:
             with open("starta.txt", "w") as f:
-                f.write(module)
+                f.write("nyaspel")
         except Exception:
             pass
         lcd.fill(BG)

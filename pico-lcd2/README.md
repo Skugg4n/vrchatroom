@@ -9,7 +9,7 @@ Startmenyn som körs när Picon får ström. Härifrån når du allt:
   Arcade: startsidan). I klockan håller du in 0+1 i 3 sekunder och trycker sedan KEY1.
 
 **Lägg alla dessa filer på Picon** (i Thonny: *Visa → Filer*, markera filerna, högerklicka → *Ladda upp till /*):
-`main.py`, `klocka.py`, `labyrint.py`, `hoppa.py`, `main2.py`, `picolib.py`, `meteor.py`, `turbo.py`, `bubblor.py`, `minigolf.py`
+`main.py`, `klocka.py`, `labyrint.py`, `hoppa.py`, `main2.py`, `nyaspel.py`
 
 ---
 
@@ -84,20 +84,21 @@ Dessutom **Klocka** och **Knapptest**. Rekord sparas på Picon i filen `rekord.j
 5. Picon startar bara `main.py` av sig själv. Vill du att arcaden startar direkt när Picon får ström,
    lägg en `main.py` på Picon som bara innehåller raden `import main2`.
 
-## Nya spel med fyra knappar
+## Nya spel med fyra knappar (`nyaspel.py`)
 
-De här korten finns i arcaden. Spelen ligger i egna filer och laddas fräscht när du väljer dem
-(Picon startar om mjukt), så att minnet räcker. KEY3 på spelets titelskärm tar dig tillbaka till samma kort.
-Alla använder `picolib.py`. Håll in alla fyra knapparna för paus.
+METEORER, TURBO, BUBBLOR och MINIGOLF ligger alla i filen `nyaspel.py`. Korten finns i arcaden.
+När du väljer ett av dem startar Picon om mjukt och laddar spelet, så att minnet räcker.
+KEY3 på spelets titelskärm tar dig tillbaka till samma kort. Håll in alla fyra knapparna för paus.
+Kör du `nyaspel.py` direkt med F5 i Thonny får du en egen liten meny.
 
 Knapparna sitter så här: KEY0 uppe till vänster, KEY1 uppe till höger, KEY3 nere till vänster, KEY2 nere till höger.
 
 | Spel | KEY0 | KEY1 | KEY3 | KEY2 |
 |------|------|------|------|------|
-| **METEORER** (`meteor.py`) – Asteroids med vektorgrafik, UFO:n, vågor, extraliv var 10 000:e poäng | sväng vänster | sväng höger | gasa | skjut (håll = hela tiden) |
-| **TURBO** (`turbo.py`) – racing i 3D med kurvor, backar och trafik. Kontrollpunkter ger +25 s | styr vänster | styr höger | bromsa | gasa |
-| **BUBBLOR** (`bubblor.py`) – bubbelskjutare, 3 i samma färg spricker, lösa bubblor ramlar, taket sänks | sikta vänster | sikta höger | byt bubbla | skjut |
-| **MINIGOLF** (`minigolf.py`) – 9 hål med sand, vatten, sluttningar och väderkvarnar, spela på par | sikta vänster | sikta höger | håll = sikta noga | håll = ladda, släpp = slå |
+| **METEORER** – Asteroids med vektorgrafik, UFO:n, vågor, extraliv var 10 000:e poäng | sväng vänster | sväng höger | gasa | skjut (håll = hela tiden) |
+| **TURBO** – racing i 3D med kurvor, backar och trafik. Kontrollpunkter ger +25 s | styr vänster | styr höger | bromsa | gasa |
+| **BUBBLOR** – bubbelskjutare, 3 i samma färg spricker, lösa bubblor ramlar, taket sänks | sikta vänster | sikta höger | byt bubbla | skjut |
+| **MINIGOLF** – 9 hål med sand, vatten, sluttningar och väderkvarnar, spela på par | sikta vänster | sikta höger | håll = sikta noga | håll = ladda, släpp = slå |
 
 ## 2-knappsläge (bara KEY0 och KEY1)
 

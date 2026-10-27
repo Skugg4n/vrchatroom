@@ -151,3 +151,10 @@
 - [x] golf: shorter windmill blades, wider hole 6, hub is a tunnel (only blades block)
 - [x] turbo: clip preview road inside the card; title road below key legend
 - [x] launcher: KEY2 also starts; starta.txt for direct start/back
+
+## One file for the four new games
+- [x] build nyaspel.py = picolib + meteor + turbo + bubblor + minigolf (top-level names prefixed per game, comments kept)
+- [x] dispatcher: SCORES["_spel"] picks game; arcade launch() writes it + starta.txt "nyaspel"
+- [x] remove picolib/meteor/turbo/bubblor/minigolf .py from repo
+- [x] test all four via the full launcher -> arcade -> game -> back flow (strict mock)
+- [x] docs + git push
