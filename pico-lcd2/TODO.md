@@ -211,3 +211,7 @@
 - [x] fix: Kurvan countdown no longer copies the frame buffer (150 kB)
 - [x] fix: ghosts pick a direction before leaving the house; smooth mid-tile reversal
 - [x] fix: menu hint/title overlap, descriptions <= 20 chars
+
+## Fix: crash on start (NotImplementedError: slice step)
+- [x] P_MAZE mirror used h[::-1]; MicroPython only supports step=1 slices -> join of indexed chars
+- [x] scanned main.py for other non-MicroPython features (rjust/zfill/reversed/sorted/format/f-strings...): none

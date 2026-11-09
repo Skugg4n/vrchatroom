@@ -980,7 +980,7 @@ P_HALF = (
     "#o..#......", "###.#.#.###", "#.....#...#", "#.#######.#", "#..........",
     "###########",
 )
-P_MAZE = tuple(h + h[:10][::-1] for h in P_HALF)
+P_MAZE = tuple(h + "".join(h[9 - i] for i in range(10)) for h in P_HALF)   # spegla vänster halva
 MW, MH = 21, 21
 PT = 10
 PX0, PY0 = (W - MW * PT) // 2, 26
