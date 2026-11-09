@@ -215,3 +215,17 @@
 ## Fix: crash on start (NotImplementedError: slice step)
 - [x] P_MAZE mirror used h[::-1]; MicroPython only supports step=1 slices -> join of indexed chars
 - [x] scanned main.py for other non-MicroPython features (rjust/zfill/reversed/sorted/format/f-strings...): none
+
+## Round 7: rewards, variation, new puzzle + platform games (still one file)
+- [x] architecture: game code stored as comment blocks in main.py, loaded on demand with exec, unloaded after (one file, low RAM)
+- [x] repo: sources in kalla/ (core.py + one file per game) + build.py -> main.py
+- [x] meta: 3 challenges per game -> stars, toast on unlock (drawn in LCD.show), challenges screen (KEY3 in menu)
+- [x] meta: unlocks by stars: Tetris modes, menu themes
+- [x] tetris: modes MARATON / SPRINT 40 / SKATT (gold blocks in garbage)
+- [x] studs: biomes by height, cloud platforms, bats, jetpack + spring shoes power-ups
+- [x] spokjakt: 3 mazes (verified), bonus fruit
+- [x] new: LADOR (sokoban) with generated + solver-verified levels, undo/restart, level select
+- [x] new: FLODE (flow) with generated levels, level select
+- [x] new: AVENTYR (platformer) 8 levels, coins, gems, checkpoints, enemies, dash
+- [x] test: strict mock, solvers for puzzle levels, screenshots
+- [x] docs + git push
