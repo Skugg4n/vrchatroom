@@ -1,173 +1,42 @@
-# Pico Meny (`main.py`)
+# PICO SPEL
 
-Startmenyn som körs när Picon får ström. Härifrån når du allt:
-**KLOCKA**, **LABYRINT 3D**, **HOPPA!** och **PICO ARCADE**.
+Sju spel i **en enda fil** (`main.py`) för **Raspberry Pi Pico 2 (H)** med **Waveshare Pico-LCD-2** (2", 320x240).
 
-- 0 / 1 bläddrar, KEY2 eller 0+1 (kort) startar.
-- Precis när Picon har startat: rör du inget på 10 sekunder startar det du valde senast (sparas i `meny.json`).
-- Tillbaka till menyn: håll in 0+1 i spelens egna menyer (Labyrint: titelskärmen, Hoppa: banväljaren),
-  tryck KEY3 i arcaden, och i klockan håller du in 0+1 i 3 sekunder och trycker sedan KEY1.
-- **Inga omstarter:** startmenyn skapar skärmbilden (150 kB) en gång direkt vid start och alla program delar den.
-  När ett program avslutas tas dess kod bort ur minnet innan nästa laddas, så du kan byta hur mycket du vill.
-  Fungerar både med och utan Thonny. Den lilla filen `delat.py` skapas automatiskt, låt den vara kvar.
+## Kom igång
 
-**Lägg alla dessa filer på Picon** (i Thonny: *Visa → Filer*, markera filerna, högerklicka → *Ladda upp till /*):
-`main.py`, `klocka.py`, `labyrint.py`, `hoppa.py`, `main2.py`, `nyaspel.py`
+1. Installera MicroPython för Pico 2 i Thonny (*Konfigurera tolk → Installera eller uppdatera MicroPython*, variant Raspberry Pi Pico 2).
+2. Öppna `main.py` i Thonny och spara den på Picon som `main.py` (*Arkiv → Spara som → Raspberry Pi Pico*).
+3. Klart! Spelen startar av sig själva när Picon får ström. Rekorden sparas i `spel.json`.
 
----
+## Knapparna
 
-# Pico Klocka (`klocka.py`)
+```
+KEY0 (uppe vänster)    KEY1 (uppe höger)
+KEY3 (nere vänster)    KEY2 (nere höger)
+```
 
-En minimalistisk klocka för **Raspberry Pi Pico 2 (H)** med **Waveshare Pico-LCD-2**.
-Starta den från startmenyn (`main.py`). Väljer du KLOCKA där startar den av sig själv nästa gång efter 10 sekunder.
+- **Menyn:** 0/1 väljer spel, 2 startar.
+- **I alla spel:** håll in alla fyra knapparna = paus (2 fortsätt, 3 till menyn).
+- **Efter game over:** 2 spela igen, 3 till menyn.
 
-- Egna rundade siffror med svaga släckta segment, nästan svart bakgrund.
-- Färgen följer dygnet: varm på morgonen, kall vit på dagen, orange på kvällen och dovt röd på natten
-  (22–07, då dämpas även skärmen).
-- Kolonet andas i takt med sekunderna och en liten prick vandrar längs en tunn linje.
-- Veckodag och datum visas när Picon har fått tiden från datorn.
+## Spelen
 
-**Tiden:** Med Thonny inkopplat ställs klockan automatiskt. Startar Picon utan dator frågar den efter tiden:
-KEY0 = timme +1, KEY1 = minut +1 (håll inne för att gå fort). Rör inget på 5 sekunder så sparas tiden.
-Håll in KEY0 och KEY1 i 3 sekunder, tryck sedan KEY0 för att ställa om tiden eller KEY1 för att gå till startmenyn.
+| Spel | Vad | KEY0 | KEY1 | KEY3 | KEY2 |
+|------|-----|------|------|------|------|
+| **TETRIS** | Skuggbit, nästa 3 bitar, kombos, nivåer, "TETRIS!" vid 4 rader | vänster | höger | släpp direkt | vrid |
+| **SPÖKJAKT** | Pac-Man med fyra spöken som har egna personligheter, kraftpiller och tunnel | upp | höger | vänster | ner |
+| **INVASION** | Space Invaders med förstörbara skydd, UFO, power-ups (trippel, snabb, sköld) och superlaser | vänster | höger | superlaser (full mätare) | skjut |
+| **KROSS** | Breakout med 6 banor, stenar som tål flera slag, metall, sprängstenar och power-ups (bred, multiboll, långsam, laser, liv) | vänster | höger | skjut iväg bollen | skjut iväg bollen / laser |
+| **STUDS** | Doodle Jump: rörliga plattor, plattor som går sönder, studsmattor och monster | vänster | höger | | skjut uppåt |
+| **2048** | Pusslet med glidande brickor | upp | höger | vänster | ner |
+| **KURVAN** | Achtung die Kurve mot datorn, mot 2 datorer eller 2 spelare. Först till 5 | P1 vänster | P2 vänster | P1 höger | P2 höger |
 
----
+I SPÖKJAKT och 2048 visar pilarna i skärmens hörn vilken knapp som är vilken riktning.
 
-# Större spel (egna filer, bara KEY0 och KEY1)
+## Bra att veta
 
-Varje spel är en egen fil och startas från startmenyn (`main.py`). De går också att köra direkt med F5 i Thonny.
-
-## LABYRINT 3D (`labyrint.py`)
-
-Gå runt i en 3D-labyrint och hitta utgången (den lila portalen). Labyrinten blir större för varje nivå.
-
-- Samla mynt. Från nivå 3 är utgången låst tills du har hittat **nyckeln**.
-- Från nivå 4 vandrar **spöken** i gångarna. Du har 3 liv.
-- Kartan uppe till höger ritas upp där du har varit.
-- Snabbare klarad nivå ger mer bonus. Högsta nivån och rekordet sparas i `labyrint.json`.
-
-| Knapp | Gör |
-|-------|-----|
-| håll 0 / håll 1 | sväng vänster / höger |
-| 0+1 kort | börja gå / stanna |
-| håll 0+1 | paus (fortsätt eller till menyn) |
-
-## HOPPA! (`hoppa.py`)
-
-Plattformsspel med 10 banor i 4 världar: Ängen, Öknen, Natten och Slottet. Gubben springer av sig själv.
-
-- Hoppa över glapp, taggar och pelare. Röda studsmattor skjuter upp dig över höga murar.
-- Håll inne knappen för högre hopp, tryck igen i luften för **dubbelhopp**.
-- Varje bana har en **kontrollpunkt** (blå flagga) och **3 stora mynt**.
-- Klarar du en bana öppnas nästa. Framsteg och mynt sparas i `hoppa.json`.
-
-| Knapp | Gör |
-|-------|-----|
-| 0 eller 1 | hoppa (håll = högre, igen i luften = dubbelhopp) |
-| håll 0+1 | paus (fortsätt eller tillbaka till banorna) |
-| banväljaren | 0/1 bläddra, 0+1 starta |
-
----
-
-# Pico Arcade (`main2.py`)
-
-Startsida med flera spel för **Raspberry Pi Pico 2 (H)** med **Waveshare Pico-LCD-2** (2", 320x240, ST7789).
-
-Liggande spel: **Pong** (mot datorn eller 2 spelare), **Snake**, **Breakout**, **Flappy**, **Tetris**, **Dino** och **Simon**.
-Stående spel (vrid skärmen): **Runner**, **Space** och **Stack**.
-Dessutom **Klocka** och **Knapptest**. Rekord sparas på Picon i filen `rekord.json`.
-
-## Kom igång med Thonny
-
-1. Installera MicroPython för Pico 2: håll inne BOOTSEL, koppla in USB och välj i Thonny
-   *Konfigurera tolk → Installera eller uppdatera MicroPython* (variant: Raspberry Pi Pico 2).
-2. Välj tolken **MicroPython (Raspberry Pi Pico)** nere till höger.
-3. Öppna `main2.py` och tryck **F5** för att testa.
-4. Spara den på Picon som `main2.py` (*Arkiv → Spara som → Raspberry Pi Pico*).
-5. Picon startar bara `main.py` av sig själv. Vill du att arcaden startar direkt när Picon får ström,
-   lägg en `main.py` på Picon som bara innehåller raden `import main2`.
-
-## Nya spel med fyra knappar (`nyaspel.py`)
-
-METEORER, TURBO, BUBBLOR och MINIGOLF ligger alla i filen `nyaspel.py`. Korten finns i arcaden.
-Alla fyra får inte plats i minnet samtidigt, så första gången packar `nyaspel.py` upp sig själv till
-små filer på Picon (`ny_lib.py`, `ny_meteor.py`, `ny_turbo.py`, `ny_bubblor.py`, `ny_minigolf.py`, `ny_meny.py`).
-Sedan laddas bara det spel du valt. Du behöver bara ladda upp `nyaspel.py` (spara den på Picon),
-och de uppackade filerna skrivs över när versionen ändras.
-
-KEY3 på spelets titelskärm tar dig tillbaka till samma kort. Håll in alla fyra knapparna för paus.
-Kör du `nyaspel.py` direkt med F5 i Thonny får du en egen liten meny.
-
-Knapparna sitter så här: KEY0 uppe till vänster, KEY1 uppe till höger, KEY3 nere till vänster, KEY2 nere till höger.
-
-| Spel | KEY0 | KEY1 | KEY3 | KEY2 |
-|------|------|------|------|------|
-| **METEORER** – Asteroids med vektorgrafik, UFO:n, vågor, extraliv var 10 000:e poäng | sväng vänster | sväng höger | gasa | skjut (håll = hela tiden) |
-| **TURBO** – racing i 3D med kurvor, backar och trafik. Kontrollpunkter ger +25 s | styr vänster | styr höger | bromsa | gasa |
-| **BUBBLOR** – bubbelskjutare, 3 i samma färg spricker, lösa bubblor ramlar, taket sänks | sikta vänster | sikta höger | byt bubbla | skjut |
-| **MINIGOLF** – 9 hål med sand, vatten, sluttningar och väderkvarnar, spela på par | sikta vänster | sikta höger | håll = sikta noga | håll = ladda, släpp = slå |
-
-## 2-knappsläge (bara KEY0 och KEY1)
-
-Om KEY2 och KEY3 inte fungerar (till exempel om de har lossnat), sätt `TWO_KEYS = True` högst upp i `main2.py`.
-Nu när alla fyra fungerar är den `False`.
-
-| Vad | Så gör du |
-|-----|-----------|
-| Bläddra i menyn | 0 = föregående, 1 = nästa |
-| Välj / starta | tryck 0 och 1 samtidigt (kort) |
-| Gå ur ett spel | håll in 0 och 1 i drygt en sekund |
-| Spela igen / till menyn (efter game over) | 0 / 1 |
-| Pong, 2 spelare | en knapp var: paddeln åker hela tiden, tryck för att vända |
-| Breakout | 0/1 styr, bollen skjuts iväg av sig själv (eller 0+1) |
-| Tetris | tryck 0/1 = flytta, håll in 0 eller 1 = fall snabbare, 0+1 = vrid |
-| Simon | två rutor i stället för fyra |
-| Klockan | 0/1 minus/plus, 0+1 nästa/klar, håll 0+1 = hoppa över |
-
-Paus finns inte i 2-knappsläget.
-
-## Knappar (alla fyra fungerar)
-
-Siffrorna är knapparnas nummer på kortet (KEY0–KEY3), samma som visas i Knapptest och på skärmen.
-De översta knapparna, KEY0 och KEY1, används till det man gör mest.
-
-| Spel | KEY0 | KEY1 | KEY2 | KEY3 |
-|------|------|------|------|------|
-| Startsida | föregående | nästa | spela | till startmenyn |
-| Pong, 1 spelare | upp | ner | | paus |
-| Pong, 2 spelare | P1 upp | P2 upp | P1 ner | P2 ner |
-| Snake | sväng vänster | sväng höger | | paus |
-| Breakout | vänster | höger | skjut iväg bollen | paus |
-| Flappy | flyg | flyg | flyg | paus |
-| Tetris | vänster | höger | vrid | snabbare (håll) |
-| Dino | hoppa (håll = högre) | hoppa | hoppa | paus |
-| Simon | ruta 0 (uppe till vänster) | ruta 1 (uppe till höger) | ruta 2 (nere till höger) | ruta 3 (nere till vänster) |
-
-**Stående spel:** första gången frågar spelet vilken knapp som sitter till vänster och vilken som sitter till höger
-när man håller skärmen på höjden. Valet sparas. Tryck på någon av de andra knapparna på startskärmen för att ställa in igen.
-
-**Håll in alla fyra knapparna samtidigt** en kort stund för att gå ur ett spel och tillbaka till startsidan.
-I Knapptest håller du in alla fyra i en sekund.
-
-Vill du flytta om knapparna ändrar du konstanterna högst upp i `main2.py`
-(`K_X`, `K_Y`, `K_A`, `K_B`, `PONG_SOLO`, `PONG_P1`, `PONG_P2`, `SNAKE_LEFT`, `SNAKE_RIGHT`).
-
-## Klocka
-
-- Om ingen trycker på något på startsidan i 45 sekunder visas en klocka. Ett knapptryck tar dig tillbaka.
-- När Picon är inkopplad till datorn med Thonny ställs klockan automatiskt.
-- Startar Picon utan dator frågar den vad klockan är: 0/1 minus/plus, 2 nästa/klar, 3 hoppar över (då visas ingen klocka).
-- Kortet **KLOCKA** i menyn låter dig ställa in tiden igen.
-
-## Fart
-
-- Picon körs i 250 MHz (`OVERCLOCK_HZ`). Sätt den till `None` om något beter sig konstigt.
-- Skärmen skickas med 75 MHz SPI, och bakgrunder ritas en gång och kopieras sedan in.
-- Thonnys skal visar `FPS: ...` ungefär var 5:e sekund. Målet är 30.
-
-## Felsökning
-
-- `test_knappar.py`: blinkar lampan och bakgrundsljuset och skriver ut knapptryck i Thonny.
-- `test_lcd.py`: fyller skärmen med rött, grönt, blått och vitt.
-- Om något kraschar blir skärmen röd med felmeddelandet, och felet syns i Thonnys skal.
+- Skärmbilden skapas som allra första sak och det finns bara en, så minnet räcker.
+  Kör du filen flera gånger med F5 i Thonny rensas förra körningen bort först.
+- Om något kraschar visas felet på skärmen (och i Thonnys skal). Tryck på en knapp för att komma tillbaka.
 - Skärmens inbyggda typsnitt saknar å, ä och ö, så texten på skärmen skrivs utan dem.
+- Gamla versioner av programmen ligger i mappen `gammalt/`.

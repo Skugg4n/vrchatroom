@@ -192,3 +192,22 @@
 - [x] update main2/klocka/labyrint/hoppa/ny_lib/ny_meny/nyaspel to use delat
 - [x] check: no `builtins` writes left in any file; rerun both session tests
 - [x] docs + git push
+
+## FRESH START: one file, fun games (main.py)
+- [x] design: single main.py, frame buffer allocated first, one buffer only, clears leftovers from previous Thonny runs
+- [x] keys: KEY0 TL, KEY1 TR, KEY3 BL, KEY2 BR; menu 0/1 + 2; pause = hold all four
+- [x] framework: display, keys, text, palette, particles, popups, shake, records (spel.json), pause + game over
+- [x] menu: game list + live icon preview + description + key layout per game
+- [x] game: TETRIS (ghost, next 3, hard drop, lock delay, levels, combos, line clear fx)
+- [x] game: SPOKJAKT (pac-man: 4 ghost personalities, scatter/chase, power pellets, tunnel, levels)
+- [x] game: INVASION (space invaders: sprites, bunkers, UFO, power-ups, super laser, waves)
+- [x] game: KROSS (breakout: 6 designed levels, multi-hit/metal/explosive bricks, power-ups, multiball, laser)
+- [x] game: STUDS (doodle jump: moving/breaking/spring platforms, monsters, shooting)
+- [x] game: 2048 (slide animation, merge pop, colors)
+- [x] game: KURVAN (achtung: 2P or vs 1-2 CPU, gaps, rounds)
+- [x] test: strict MicroPython-like mock, bots/random input per game, screenshots
+- [x] repo: old files moved to pico-lcd2/gammalt/, README rewritten
+- [x] git push + zip
+- [x] fix: Kurvan countdown no longer copies the frame buffer (150 kB)
+- [x] fix: ghosts pick a direction before leaving the house; smooth mid-tile reversal
+- [x] fix: menu hint/title overlap, descriptions <= 20 chars
