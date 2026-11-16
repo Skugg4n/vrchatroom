@@ -229,3 +229,9 @@
 - [x] new: AVENTYR (platformer) 8 levels, coins, gems, checkpoints, enemies, dash
 - [x] test: strict mock, solvers for puzzle levels, screenshots
 - [x] docs + git push
+
+## Round 8: MemoryError when opening AVENTYR
+- [x] fix: load_game writes the game to _spel.py and imports it (no 41 kB string, streamed compile)
+- [x] fix: unload game module after play and on errors
+- [x] test: rebuilt mock, all 10 games stress-tested, mpy-cross compile
+- [x] docs + git push

@@ -54,7 +54,7 @@ Stjärnorna låser upp:
 
 ## Så funkar filen
 
-För att allt ska rymmas i minnet ligger varje spels kod längst ner i `main.py` som kommentarer (`#@@ namn` följt av rader som börjar med `#|`). Bara menyn startar direkt, och när du väljer ett spel läses just det spelet in. När du går tillbaka till menyn släpps det ur minnet igen.
+För att allt ska rymmas i minnet ligger varje spels kod längst ner i `main.py` som kommentarer (`#@@ namn` följt av rader som börjar med `#|`). Bara menyn startar direkt, och när du väljer ett spel skrivs just det spelets kod till filen `_spel.py` på Picon och läses in därifrån (bit för bit, så det behövs ingen stor sammanhängande minnesbit). När du går tillbaka till menyn släpps det ur minnet igen. `_spel.py` skrivs över varje gång, du behöver inte bry dig om den.
 
 `main.py` byggs av källfilerna i `kalla/`:
 

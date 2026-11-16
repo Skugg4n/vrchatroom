@@ -877,10 +877,21 @@ def theme_bg():
 # ---------------------------------------------------------------
 # Spelen läses in från kommentarerna längst ner i den här filen
 # ---------------------------------------------------------------
-def load_game(name):
-    """Läser spelets kod (rader '#|...' efter '#@@ namn') och kör den.
-    Returnerar spelets namnrymd. Bara ett spel i minnet åt gången."""
+GAME_MOD = "_spel"
+
+
+def unload_game():
+    import sys
+    if GAME_MOD in sys.modules:
+        del sys.modules[GAME_MOD]
     gc.collect()
+
+
+def load_game(name):
+    """Plockar ut spelets kod (rader '#|...' efter '#@@ namn') till filen _spel.py
+    och importerar den. Importen läser filen bit för bit, så det behövs ingen
+    stor sammanhängande minnesbit. Bara ett spel i minnet åt gången."""
+    unload_game()
     src = None
     for path in (globals().get("__file__"), "main.py", "/main.py"):
         if not path:
@@ -892,23 +903,21 @@ def load_game(name):
             src = None
     if src is None:
         raise OSError("Hittar inte main.py pa Picon. Spara filen pa Picon som main.py.")
-    lines = []
+    out = open(GAME_MOD + ".py", "w")
+    out.write("from __main__ import *\n")      # spelet ser menyns/grundens namn
     on = False
     for line in src:
         if line.startswith("#@@ "):
+            if on:
+                break
             on = line[4:].strip() == name
             continue
         if on and line.startswith("#|"):
-            lines.append(line[2:])
+            out.write(line[2:])
     src.close()
-    code = "".join(lines)
-    lines = None
+    out.close()
     gc.collect()
-    ns = dict(globals())
-    exec(code, ns)
-    code = None
-    gc.collect()
-    return ns
+    return __import__(GAME_MOD)
 
 
 # (nyckel, namn, färg, beskrivning, knappar (0, 1, 3, 2), ikon)
@@ -1102,7 +1111,7 @@ def main():
             ctext(lcd, "LADDAR " + name + "...", 112, col, 2)
             lcd.show()
             ns = load_game(key)
-            play = ns["play"]
+            play = ns.play
             while True:
                 gc.collect()
                 res = play(lcd, keys)
@@ -1116,13 +1125,13 @@ def main():
                     again = game_over(lcd, keys, key, res, col)
                 if not again:
                     break
-            play = None
-            ns.clear()
-            ns = None
-            gc.collect()
+            play = ns = None
+            unload_game()
         except KeyboardInterrupt:
             raise
         except Exception as e:
+            play = ns = None
+            unload_game()
             show_error(lcd, e)
             keys.wait_release()
             while True:
