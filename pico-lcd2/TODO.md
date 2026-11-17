@@ -242,7 +242,7 @@
 - [x] new: DINO (runner) with speed-up, day/night, birds, coins, double jump
 - [x] new: more games: ORM (landscape), portrait mode + STAPLA, RUSA, ANFALL (portrait)
 - [x] menu: scrolling game list for 13 games, challenges for new games
-- [ ] lador: many more levels (generator + solver), paged level select
-- [ ] flode: many more levels (bigger sizes), paged level select
-- [ ] test: mock stress all games, solver checks, mpy-cross, screenshots
-- [ ] docs + git push + send main.py
+- [x] lador: many more levels (generator + solver), paged level select
+- [x] flode: many more levels (bigger sizes), paged level select
+- [x] test: mock stress all games, solver checks, mpy-cross, screenshots
+- [x] docs + git push + send main.py
