@@ -147,9 +147,7 @@ def to_rows(g, goals, boxes, p):
 def main():
     rnd = random.Random(2026)
     plan = [(2, 7, 6, 4, 8)] * 5 + [(3, 8, 7, 8, 16)] * 7 + [(3, 9, 8, 14, 30)] * 5 + [(4, 9, 8, 16, 40)] * 3
-    # fler banor (de 20 första blir likadana som förut)
-    plan += [(2, 8, 7, 8, 14)] * 6 + [(3, 9, 8, 14, 30)] * 10 + [(4, 9, 8, 18, 40)] * 10
-    plan += [(4, 10, 9, 20, 50)] * 8 + [(5, 10, 9, 22, 60)] * 6
+    # banorna 21 och uppåt görs av gen_ladr_mer.py
     out = []
     for nbox, w, h, lo, hi in plan:
         while True:
