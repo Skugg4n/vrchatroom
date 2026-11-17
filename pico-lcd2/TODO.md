@@ -246,3 +246,12 @@
 - [x] flode: many more levels (bigger sizes), paged level select
 - [x] test: mock stress all games, solver checks, mpy-cross, screenshots
 - [x] docs + git push + send main.py
+
+## Round 10: relative snake, faster stacking, new portrait games
+- [x] orm: steer relative (left/right turn), no absolute directions
+- [x] stapla: speeds up much faster
+- [x] new portrait: TURBO car game (fast highway weaving, near-miss bonus, nitro)
+- [x] new portrait: RAS (falling ball through rising platforms, fast)
+- [x] remove RUSA + ANFALL, update menu, challenges, icons, build list
+- [x] test: mock stress, screenshots, mpy-cross
+- [x] docs + git push + send main.py

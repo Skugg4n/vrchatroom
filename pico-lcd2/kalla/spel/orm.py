@@ -1,4 +1,4 @@
-# ORM: styr ormen till äpplena. Pilarna i hörnen: 0 upp, 1 höger, 2 ner, 3 vänster.
+# ORM: styr ormen till äpplena. 0 eller 3 = sväng vänster, 1 eller 2 = sväng höger.
 # Var 8:e äpple: ny nivå med nya väggar. Guldäpple = mycket poäng, chili = turbo.
 OC = 12
 OW, OH = 26, 17
@@ -60,11 +60,10 @@ def play(lcd, keys):
             keys.update()
             if keys.pause() and pause(lcd, keys):
                 return score
-            for k in (K0, K1, K2, K3):
+            for k, turn in ((K0, 3), (K3, 3), (K1, 1), (K2, 1)):
                 if keys.pressed(k) and len(turns) < 3:
                     last = turns[-1] if turns else d
-                    if k != last and k != (last + 2) % 4:
-                        turns.append(k)
+                    turns.append((last + turn) % 4)     # sväng relativt ormens riktning
             if banner:
                 banner -= 1
             else:
@@ -187,5 +186,3 @@ def o_draw(lcd, walls, snake, apple, gold, chili, score, level, t, show, turbo):
         lcd.fill_rect(hx + 8, hy + 3, 2, 2, BLACK)
     big(lcd, str(score), OX, 6, WHITE, 2)
     rtext(lcd, "NIVA %d  %s" % (level + 1, O_NAMES[level % len(O_NAMES)]), W - 30, 10, LIME)
-    arrow(lcd, 10, 12, 0, DIM)
-    arrow(lcd, W - 10, 12, 1, DIM)

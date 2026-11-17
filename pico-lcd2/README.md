@@ -32,7 +32,7 @@ KEY3 (nere vänster)    KEY2 (nere höger)
 | **DINO** | Spring, hoppa (dubbelhopp!) och ducka. Mynt, sköld, fåglar, dag och natt. Fortare och fortare | ducka | hoppa | ducka | hoppa |
 | **STUDS** | Hoppa uppåt genom NATTEN, HIMLEN, RYMDEN och GALAXEN. Jetpack, fjäderskor, moln och fladdermöss | vänster | höger | | skjut |
 | **SPÖKJAKT** | Pac-Man med tre labyrinter, fyra spöken med egna personligheter och bonusfrukt | upp | höger | vänster | ner |
-| **ORM** | Snake med fem banor (ny var 8:e äpple), guldäpple och chili-turbo | upp | höger | vänster | ner |
+| **ORM** | Snake med fem banor (ny var 8:e äpple), guldäpple och chili-turbo. Du svänger åt vänster eller höger från där ormen tittar | sväng vänster | sväng höger | sväng vänster | sväng höger |
 | **2048** | Pusslet med glidande brickor | upp | höger | vänster | ner |
 | **INVASION** | Space Invaders med skydd, UFO, power-ups och superlaser | vänster | höger | superlaser | skjut |
 | **KROSS** | Breakout med 6 banor, sprängstenar och power-ups | vänster | höger | skjut iväg bollen | skjut iväg bollen / laser |
@@ -44,9 +44,9 @@ Vrid skärmen ett kvarts varv. Första gången visar spelet en pil som ska peka 
 
 | Spel | Vad | Vänster/höger | De andra knapparna |
 |------|-----|---------------|--------------------|
-| **STAPLA** | Bygg ett så högt torn som möjligt. Perfekt träff = blocket växer | släpp | släpp |
-| **RUSA** | Spring längs vägen i tre filer genom fyra världar, ta mynt | byt fil | hoppa över låga hinder |
-| **ANFALL** | Rymdskjutare: gröna, lila (tål tre skott, tappar trippelskott) och meteorer | styr | bomb (en extra per 1000 poäng) |
+| **STAPLA** | Bygg ett så högt torn som möjligt. Blocket åker fortare för varje våning. Perfekt träff = blocket växer | släpp | släpp |
+| **TURBO** | Bilspel i full fart: väj mellan bilarna, kör nära för bonus och fyll nitromätaren. Fortare och fortare | styr | NITRO (när mätaren är full) |
+| **RAS** | Bollen ska falla genom hålen innan plattformarna når spiktaket. Spikplattor, studs, rullband och plattor som rasar | rulla | |
 
 I spelen med fyra riktningar visar pilarna i skärmens hörn vilken knapp som är vilken riktning.
 

@@ -460,8 +460,8 @@ CHALLENGES = {
     "dino": ("Na 500", "Ta 50 mynt i en runda", "Na 2000"),
     "orm": ("At 20 applen", "Na niva 4", "At 60 applen"),
     "stapla": ("Bygg 15 vaningar", "3 perfekta i rad", "Bygg 40 vaningar"),
-    "rusa": ("Na 1000", "Ta 30 mynt i en runda", "Na 3000"),
-    "anfall": ("Na 500", "Skjut ner 10 lila", "Na 2000"),
+    "turbo": ("Na 2000", "10 nara-missar i en runda", "Na 8000"),
+    "ras": ("Na 500", "Ta 20 mynt i en runda", "Na 2000"),
 }
 
 

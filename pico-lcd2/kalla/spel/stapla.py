@@ -27,7 +27,7 @@ def sb_game(lcd, fb, keys, L, R):
     cur_w = 110.0
     x = 0.0
     dirx = 1
-    speed = 2.4
+    speed = 3.0
     perfect = 0
     falling = []                    # bitar som ramlar: x, y, bredd, fart, färg
     cam = 0.0
@@ -86,7 +86,7 @@ def sb_game(lcd, fb, keys, L, R):
                 goal("stapla", 0)
             if n - 1 >= 40:
                 goal("stapla", 2)
-            speed = min(7.0, 2.4 + (n - 1) * 0.12)
+            speed = min(13.0, 3.0 + (n - 1) * 0.3)      # fortare för varje våning
             dirx = 1 if n % 2 else -1
             x = -cur_w * 0.6 if dirx > 0 else VW - cur_w * 0.4
             if (n - 1) % 3 == 0:

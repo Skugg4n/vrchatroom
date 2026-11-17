@@ -460,8 +460,8 @@ CHALLENGES = {
     "dino": ("Na 500", "Ta 50 mynt i en runda", "Na 2000"),
     "orm": ("At 20 applen", "Na niva 4", "At 60 applen"),
     "stapla": ("Bygg 15 vaningar", "3 perfekta i rad", "Bygg 40 vaningar"),
-    "rusa": ("Na 1000", "Ta 30 mynt i en runda", "Na 3000"),
-    "anfall": ("Na 500", "Skjut ner 10 lila", "Na 2000"),
+    "turbo": ("Na 2000", "10 nara-missar i en runda", "Na 8000"),
+    "ras": ("Na 500", "Ta 20 mynt i en runda", "Na 2000"),
 }
 
 
@@ -918,34 +918,32 @@ def sb_icon(i):
     return rgb(int(150 + 100 * math.sin(a)), int(150 + 100 * math.sin(a + 2.1)), int(150 + 100 * math.sin(a + 4.2)))
 
 
-def icon_rusa(fb, x, y, t):
-    for yy in range(0, 30, 3):
-        fb.fill_rect(x, y + yy, 160, 3, mix((40, 20, 90), (255, 150, 90), yy / 30))
-    fb.fill_rect(x, y + 30, 160, 42, rgb(30, 100, 50))
-    tri(fb, x + 80, y + 30, x + 20, y + 72, x + 140, y + 72, rgb(80, 72, 70))
-    for k in range(3):
-        yy = y + 32 + ((t * 2 + k * 14) % 40)
-        fb.fill_rect(x + 79, yy, 2, 4, WHITE)
-    fb.fill_rect(x + 74, y + 40, 12, 14, TEAL)
-    fb.ellipse(x + 80, y + 36, 5, 5, rgb(255, 200, 150), True)
-    fb.fill_rect(x + 74 + ((t // 3) % 2) * 6, y + 54, 5, 8, rgb(50, 80, 200))
+def icon_turbo(fb, x, y, t):
+    fb.fill_rect(x, y, 160, 72, rgb(40, 140, 60))
+    fb.fill_rect(x + 40, y, 80, 72, rgb(60, 60, 68))
+    for k in range(4):
+        yy = (k * 20 + t * 6) % 80 - 8
+        fb.fill_rect(x + 79, y + max(0, yy), 2, 10 if yy >= 0 else 10 + yy, WHITE)
+    oy = (t * 4) % 110 - 30
+    if -14 < oy < 52:
+        fb.fill_rect(x + 50, y + max(0, oy), 14, 20 + min(0, oy), CORAL)
+    px = x + 84 + int(14 * math.sin(t * 0.1))
+    fb.fill_rect(px, y + 46, 14, 22, SKY)
+    fb.fill_rect(px + 3, y + 50, 8, 5, rgb(40, 50, 80))
     fb.rect(x + 140, y + 4, 14, 24, WHITE)
     fb.fill_rect(x + 145, y + 24, 4, 2, WHITE)
 
 
-def icon_anfall(fb, x, y, t):
-    fb.fill_rect(x, y, 160, 72, BG)
-    for i in range(14):
-        fb.pixel(x + (i * 37) % 160, y + (i * 23 + t) % 72, WHITE)
-    for k in range(3):
-        ax = x + 30 + k * 40
-        ay = y + 10 + (t + k * 9) % 20
-        fb.fill_rect(ax - 6, ay - 4, 12, 7, LIME if k != 1 else VIOLET)
-    sx = x + 80 + int(30 * math.sin(t * 0.07))
-    fb.fill_rect(sx - 2, y + 50, 4, 12, WHITE)
-    fb.fill_rect(sx - 9, y + 58, 18, 4, SKY)
-    for k in range(3):
-        fb.fill_rect(sx - 1, y + 44 - ((t * 6 + k * 15) % 40), 2, 5, YELLOW)
+def icon_ras(fb, x, y, t):
+    fb.fill_rect(x, y, 160, 72, rgb(30, 14, 54))
+    for k in range(0, 160, 10):
+        tri(fb, x + k, y, x + k + 10, y, x + k + 5, y + 8, rgb(200, 200, 220))
+    for k, (px, c) in enumerate(((20, 0), (90, 2), (40, 4), (100, 1))):
+        py = y + 72 - ((t * 2 + k * 22) % 64)
+        if py > y + 10:
+            fb.fill_rect(x + px, py, 44, 5, (rgb(220, 225, 240), rgb(240, 60, 60), rgb(80, 220, 110),
+                                             rgb(250, 210, 40), rgb(170, 110, 60))[c])
+    fb.ellipse(x + 70 + int(20 * math.sin(t * 0.07)), y + 36, 6, 6, AMBER, True)
     fb.rect(x + 140, y + 4, 14, 24, WHITE)
     fb.fill_rect(x + 145, y + 24, 4, 2, WHITE)
 
@@ -1301,7 +1299,7 @@ GAMES = (
     ("pac", "SPOKJAKT", YELLOW, ("At alla prickar!", "Stora prickar gor", "spoken atbara."),
      ("upp", "hoger", "vanster", "ner"), icon_pac),
     ("orm", "ORM", rgb(90, 220, 90), ("At applen och vax.", "Guldapple och chili!", "Nya banor var 8:e."),
-     ("upp", "hoger", "vanster", "ner"), icon_orm),
+     ("svang <", "svang >", "svang <", "svang >"), icon_orm),
     ("2048", "2048", G_COL[4], ("Skjut brickorna at", "ett hall. Lika tal", "slas ihop. Na 2048!"),
      ("upp", "hoger", "vanster", "ner"), icon_2048),
     ("invasion", "INVASION", LIME, ("Skjut ner invasionen", "innan den landar.", "Full matare = laser"),
@@ -1312,10 +1310,10 @@ GAMES = (
      ("P1 <", "P2 <", "P1 >", "P2 >"), icon_kurvan),
     ("stapla", "STAPLA", CORAL, ("STAENDE SPEL!", "Bygg ett hogt torn.", "Perfekt = vaxer."),
      None, icon_stapla),
-    ("rusa", "RUSA", AMBER, ("STAENDE SPEL!", "Spring, byt fil och", "hoppa over hinder."),
-     None, icon_rusa),
-    ("anfall", "ANFALL", LIME, ("STAENDE SPEL!", "Skjut ner allt som", "kommer. Bomber!"),
-     None, icon_anfall),
+    ("turbo", "TURBO", SKY, ("STAENDE SPEL!", "Vaj mellan bilarna", "i full fart. NITRO!"),
+     None, icon_turbo),
+    ("ras", "RAS", VIOLET, ("STAENDE SPEL!", "Fall genom halen", "innan spikarna!"),
+     None, icon_ras),
 )
 
 
@@ -4267,11 +4265,10 @@ main()
 #|            keys.update()
 #|            if keys.pause() and pause(lcd, keys):
 #|                return score
-#|            for k in (K0, K1, K2, K3):
+#|            for k, turn in ((K0, 3), (K3, 3), (K1, 1), (K2, 1)):
 #|                if keys.pressed(k) and len(turns) < 3:
 #|                    last = turns[-1] if turns else d
-#|                    if k != last and k != (last + 2) % 4:
-#|                        turns.append(k)
+#|                    turns.append((last + turn) % 4)     # sväng relativt ormens riktning
 #|            if banner:
 #|                banner -= 1
 #|            else:
@@ -4392,8 +4389,6 @@ main()
 #|        lcd.fill_rect(hx + 8, hy + 3, 2, 2, BLACK)
 #|    big(lcd, str(score), OX, 6, WHITE, 2)
 #|    rtext(lcd, "NIVA %d  %s" % (level + 1, O_NAMES[level % len(O_NAMES)]), W - 30, 10, LIME)
-#|    arrow(lcd, 10, 12, 0, DIM)
-#|    arrow(lcd, W - 10, 12, 1, DIM)
 #@@ 2048
 #|G_N = 4
 #|G_S = 46
@@ -5253,7 +5248,7 @@ main()
 #|    cur_w = 110.0
 #|    x = 0.0
 #|    dirx = 1
-#|    speed = 2.4
+#|    speed = 3.0
 #|    perfect = 0
 #|    falling = []                    # bitar som ramlar: x, y, bredd, fart, färg
 #|    cam = 0.0
@@ -5312,7 +5307,7 @@ main()
 #|                goal("stapla", 0)
 #|            if n - 1 >= 40:
 #|                goal("stapla", 2)
-#|            speed = min(7.0, 2.4 + (n - 1) * 0.12)
+#|            speed = min(13.0, 3.0 + (n - 1) * 0.3)      # fortare för varje våning
 #|            dirx = 1 if n % 2 else -1
 #|            x = -cur_w * 0.6 if dirx > 0 else VW - cur_w * 0.4
 #|            if (n - 1) % 3 == 0:
@@ -5358,234 +5353,49 @@ main()
 #|    s = str(n - 1)
 #|    big(fb, s, VW // 2 - len(s) * 12, 10, WHITE, 3)
 #|    fb.text("REKORD %d" % SCORES.get("stapla", 0), 4, 40, WHITE)
-#@@ rusa
-#|HZ = 96                     # horisonten
-#|FOC = 224.0                 # y = HZ + FOC / z  (z = avstånd)
-#|LANE_DX = 74.0
-#|RUN_PZ = 1.25               # spelarens avstånd
-#|RUN_PY = int(HZ + FOC / RUN_PZ)
-#|RUN_Z = [FOC / (y - HZ) for y in range(HZ + 1, VH)]
-#|RUN_HW = [int(110 / z) for z in RUN_Z]
-#|RUN_DIV = [int(LANE_DX / 2 / z) for z in RUN_Z]
-#|RUN_LW = [max(1, int(3 / z)) for z in RUN_Z]
-#|ROAD_A, ROAD_B = rgb(70, 62, 60), rgb(82, 74, 70)
-#|GRASS = ((rgb(30, 100, 50), rgb(40, 120, 60)), (rgb(200, 170, 90), rgb(215, 185, 100)),
-#|         (rgb(220, 230, 240), rgb(200, 215, 235)), (rgb(40, 30, 70), rgb(55, 40, 90)))
-#|SKIES = (((40, 20, 90), (255, 150, 90)), ((90, 160, 240), (250, 220, 150)),
-#|         ((120, 150, 200), (230, 240, 255)), ((5, 5, 25), (60, 30, 100)))
-#|RUMBLE_A = CORAL
-#|SKIN = rgb(255, 200, 150)
-#|@native
-#|def draw_road(fb, travel, ga, gb):
-#|    n = len(RUN_Z)
-#|    for i in range(n):
-#|        y = HZ + 1 + i
-#|        s = int((RUN_Z[i] + travel) * 1.4) & 1
-#|        hw = RUN_HW[i]
-#|        rw = hw // 7 + 1
-#|        fb.hline(0, y, VW, ga if s else gb)
-#|        fb.hline(120 - hw - rw, y, 2 * (hw + rw), RUMBLE_A if s else WHITE)
-#|        fb.hline(120 - hw, y, 2 * hw, ROAD_A if s else ROAD_B)
-#|        if s:
-#|            d = RUN_DIV[i]
-#|            lw = RUN_LW[i]
-#|            fb.hline(120 - d - lw // 2, y, lw, WHITE)
-#|            fb.hline(120 + d - lw // 2, y, lw, WHITE)
-#|def draw_sky(fb, sky, world, t):
-#|    gradient(fb, sky, 0, HZ + 1)
-#|    if world == 3:
-#|        for i in range(20):
-#|            fb.pixel((i * 73 + 11) % VW, (i * 37 + 5) % HZ, WHITE)
-#|        fb.ellipse(180, 40, 12, 12, rgb(250, 245, 210), True)
+#@@ turbo
+#|RX0, RX1 = 24, 216            # vägkanterna
+#|LANES = 4
+#|LW = (RX1 - RX0) // LANES     # 48
+#|PY = 252                      # din bils y (överkant)
+#|CW, CH = 24, 40
+#|CAR_COLS = (rgb(230, 60, 60), rgb(60, 130, 255), rgb(250, 210, 40), rgb(240, 240, 240),
+#|            rgb(60, 200, 110), rgb(250, 130, 30), rgb(180, 80, 230))
+#|ROAD = rgb(60, 60, 68)
+#|GRASS = (rgb(40, 140, 60), rgb(34, 120, 52))
+#|def play(lcd, keys):
+#|    return v_play(lcd, keys, "TURBO", CORAL, ("Kor sa fort du kan!", "Vanster/hoger styr.", "Andra knapparna: NITRO", "Kor nara = bonus!"), "turbo", car_game)
+#|def draw_car(fb, x, y, col, me=False, t=0):
+#|    x, y = int(x), int(y)
+#|    fb.fill_rect(x + 2, y, CW - 4, CH, col)
+#|    fb.fill_rect(x, y + 4, CW, CH - 8, col)
+#|    fb.fill_rect(x + 4, y + (8 if me else 24), CW - 8, 8, rgb(40, 50, 80))       # ruta
+#|    fb.fill_rect(x + 4, y + (26 if me else 6), CW - 8, 5, rgb(40, 50, 80))
+#|    fb.fill_rect(x - 1, y + 6, 3, 8, BLACK)                                    # hjul
+#|    fb.fill_rect(x + CW - 2, y + 6, 3, 8, BLACK)
+#|    fb.fill_rect(x - 1, y + CH - 14, 3, 8, BLACK)
+#|    fb.fill_rect(x + CW - 2, y + CH - 14, 3, 8, BLACK)
+#|    if me:
+#|        fb.fill_rect(x + 4, y + CH - 2, 5, 2, CORAL)
+#|        fb.fill_rect(x + CW - 9, y + CH - 2, 5, 2, CORAL)
 #|    else:
-#|        fb.ellipse(120, HZ - 4, 26, 26, rgb(255, 230, 120), True)
-#|    mcol = (rgb(70, 40, 90), rgb(160, 120, 70), rgb(240, 245, 255), rgb(30, 20, 50))[world]
-#|    for x in range(0, VW, 4):
-#|        h = int(16 + 9 * math.sin(x * 0.045 + world) + 6 * math.sin(x * 0.13 + 1))
-#|        fb.fill_rect(x, HZ - h, 4, h + 1, mcol)
-#|def draw_obj(fb, o, t):
-#|    z = o[1]
-#|    if z < 0.7:
-#|        return
-#|    s = 1 / z
-#|    y = int(HZ + FOC / z)
-#|    x = int(120 + o[0] * LANE_DX / z)
-#|    if o[2] == 0:                       # hög spärr: byt fil
-#|        w = max(2, int(62 * s))
-#|        h = max(2, int(40 * s))
-#|        fb.fill_rect(x - w // 2, y - h, w, h, RUMBLE_A)
-#|        b = max(1, h // 5)
-#|        fb.fill_rect(x - w // 2, y - h + b, w, b, WHITE)
-#|        fb.fill_rect(x - w // 2, y - h + 3 * b, w, b, WHITE)
-#|    elif o[2] == 2:                     # lågt hinder: hoppa
-#|        w = max(2, int(62 * s))
-#|        h = max(1, int(12 * s))
-#|        fb.fill_rect(x - w // 2, y - h, w, h, AMBER)
-#|        fb.fill_rect(x - w // 2, y - h, w, max(1, h // 3), YELLOW)
-#|    else:                               # mynt
-#|        r = max(1, int(11 * s))
-#|        rx = max(1, int(r * abs(math.sin(t * 0.15 + z))))
-#|        cy = y - int(26 * s)
-#|        fb.ellipse(x, cy, rx, r, YELLOW, True)
-#|        if rx > 2:
-#|            fb.ellipse(x, cy, max(1, rx // 2), max(1, r // 2), AMBER, True)
-#|def draw_runner(fb, x, t, jh):
-#|    y = RUN_PY - jh
-#|    fb.ellipse(x, RUN_PY, 14 - jh // 6, 4, rgb(30, 30, 30), True)
-#|    leg = (t // 3) % 2 if jh == 0 else 2
-#|    fb.fill_rect(x - 6, y - 14, 4, 12 if leg == 1 else 8, rgb(50, 80, 200))
-#|    fb.fill_rect(x + 2, y - 14, 4, 8 if leg == 1 else 12, rgb(50, 80, 200))
-#|    fb.fill_rect(x - 7, y - 32, 14, 19, TEAL)
-#|    fb.fill_rect(x - 10, y - 30 + (3 if leg == 1 else 0), 3, 10, SKIN)
-#|    fb.fill_rect(x + 7, y - 30 + (0 if leg == 1 else 3), 3, 10, SKIN)
-#|    fb.ellipse(x, y - 39, 7, 7, SKIN, True)
-#|    fb.fill_rect(x - 7, y - 47, 14, 4, rgb(120, 60, 30))
-#|def play(lcd, keys):
-#|    return v_play(lcd, keys, "RUSA", AMBER, ("Spring sa langt du kan!", "Vanster/hoger: byt fil.", "Andra knapparna: hoppa", "over de laga hindren."), "rusa", run_game)
-#|def run_game(lcd, fb, keys, L, R):
-#|    J = [k for k in (K0, K1, K2, K3) if k != L and k != R]
-#|    lane = 0
-#|    px = 120.0
-#|    obs = []          # [fil, z, typ, passerad]  typ 0 spärr, 1 mynt, 2 lågt hinder
+#|        fb.fill_rect(x + 3, y + CH - 3, 5, 3, rgb(255, 60, 40))                   # bromsljus
+#|        fb.fill_rect(x + CW - 8, y + CH - 3, 5, 3, rgb(255, 60, 40))
+#|def car_game(lcd, fb, keys, L, R):
+#|    N = [k for k in (K0, K1, K2, K3) if k != L and k != R]
+#|    x = RX0 + LW + (LW - CW) / 2
+#|    vx = 0.0
+#|    speed = 9.0               # pixlar per bildruta
 #|    dist = 0.0
-#|    coins = 0
-#|    jump = 0          # bildrutor kvar av hoppet
-#|    next_row = 3.0
-#|    world = -1
-#|    t = 0
-#|    parts = Particles(40)
-#|    keys.wait_release()
-#|    while True:
-#|        t0 = time.ticks_ms()
-#|        keys.update()
-#|        if keys.pause():
-#|            return None
-#|        if keys.pressed(L):
-#|            lane = max(-1, lane - 1)
-#|        if keys.pressed(R):
-#|            lane = min(1, lane + 1)
-#|        if jump == 0 and any(keys.pressed(k) for k in J):
-#|            jump = 18
-#|        if jump:
-#|            jump -= 1
-#|        jh = int(46 * math.sin(math.pi * jump / 18)) if jump else 0
-#|        px += (120 + lane * LANE_DX / RUN_PZ - px) * 0.45
-#|        speed = min(0.13 + dist * 0.0008, 0.42)
-#|        dist += speed
-#|        w = int(dist * 10) // 800 % 4
-#|        if w != world:
-#|            world = w
-#|            sky = [mix(SKIES[w][0], SKIES[w][1], y / HZ) for y in range(HZ + 1)]
-#|        next_row -= speed
-#|        if next_row <= 0:
-#|            next_row = random.uniform(3.6, 6.0)
-#|            lanes = [-1, 0, 1]
-#|            for _ in range(random.choice((1, 1, 2))):
-#|                kind = 2 if dist > 30 and random.random() < 0.4 else 0
-#|                obs.append([lanes.pop(random.randint(0, len(lanes) - 1)), 22.0, kind, False])
-#|            if random.random() < 0.75:
-#|                ln = random.choice(lanes)
-#|                for k in range(random.choice((1, 3, 4))):
-#|                    obs.append([ln, 22.0 + k * 1.2, 1, False])
-#|        crashed = False
-#|        for o in obs:
-#|            o[1] -= speed
-#|            if not o[3] and o[1] <= RUN_PZ:
-#|                o[3] = True
-#|                if o[0] == lane:
-#|                    if o[2] == 0 or (o[2] == 2 and jh < 12):
-#|                        crashed = True
-#|                    elif o[2] == 1:
-#|                        coins += 1
-#|                        o[1] = -1
-#|                        parts.burst(px, RUN_PY - 30 - jh, YELLOW, 6, 2, 10)
-#|                        if coins >= 30:
-#|                            goal("rusa", 1)
-#|        obs = [o for o in obs if o[1] > 0.6]
-#|        score = int(dist * 10) + coins * 25
-#|        if score >= 1000:
-#|            goal("rusa", 0)
-#|        if score >= 3000:
-#|            goal("rusa", 2)
-#|        draw_sky(fb, sky, world, t)
-#|        draw_road(fb, dist, GRASS[world][0], GRASS[world][1])
-#|        obs.sort(key=lambda o: -o[1])
-#|        for o in obs:
-#|            if o[1] > RUN_PZ:
-#|                draw_obj(fb, o, t)
-#|        draw_runner(fb, int(px), t, jh)
-#|        for o in obs:
-#|            if o[1] <= RUN_PZ:
-#|                draw_obj(fb, o, t)
-#|        parts.draw(fb)
-#|        big(fb, str(score), 6, 6, WHITE, 2)
-#|        fb.ellipse(VW - 40, 13, 6, 6, YELLOW, True)
-#|        fb.text("%d" % coins, VW - 30, 9, WHITE)
-#|        if t < 70 and (t // 10) % 2 == 0:
-#|            ctext(fb, "%d <      > %d" % (L, R), 150, WHITE, 2, VW // 2)
-#|            ctext(fb, "hoppa: %d / %d" % (J[0], J[1]), 176, YELLOW, 1, VW // 2)
-#|        lcd.show()
-#|        if crashed:
-#|            for k in range(6):
-#|                fb.rect(0, 0, VW, VH, CORAL if k % 2 == 0 else WHITE)
-#|                fb.rect(1, 1, VW - 2, VH - 2, CORAL if k % 2 == 0 else WHITE)
-#|                lcd.show()
-#|                time.sleep_ms(80)
-#|            return score
-#|        t += 1
-#|        wait(t0)
-#@@ anfall
-#|SHIP_Y = 292
-#|def play(lcd, keys):
-#|    return v_play(lcd, keys, "ANFALL", LIME, ("Skjut ner allt som", "kommer! Lila skepp", "tal tre skott och kan", "tappa trippelskott."), "anfall", sp_game)
-#|def draw_ship(fb, x, t, triple):
-#|    fb.fill_rect(x - 2, SHIP_Y - 14, 4, 18, WHITE)
-#|    fb.fill_rect(x - 6, SHIP_Y - 4, 12, 6, SKY)
-#|    fb.fill_rect(x - 12, SHIP_Y, 24, 4, SKY)
-#|    fb.fill_rect(x - 12, SHIP_Y - 4, 3, 8, AMBER if triple else rgb(50, 80, 200))
-#|    fb.fill_rect(x + 9, SHIP_Y - 4, 3, 8, AMBER if triple else rgb(50, 80, 200))
-#|    fb.fill_rect(x - 1, SHIP_Y - 8, 2, 3, CORAL)
-#|    fl = 4 + (t % 3) * 2
-#|    fb.fill_rect(x - 3, SHIP_Y + 4, 6, fl, AMBER)
-#|    fb.fill_rect(x - 1, SHIP_Y + 4, 2, fl + 3, YELLOW)
-#|def draw_alien(fb, e, t):
-#|    x, y = int(e[0]), int(e[1])
-#|    if e[4] == 0:
-#|        fb.fill_rect(x - 8, y - 5, 16, 9, LIME)
-#|        fb.fill_rect(x - 5, y - 2, 3, 3, BG)
-#|        fb.fill_rect(x + 2, y - 2, 3, 3, BG)
-#|        fb.fill_rect(x - 6, y - 8, 2, 3, LIME)
-#|        fb.fill_rect(x + 4, y - 8, 2, 3, LIME)
-#|        k = 0 if (t // 8) % 2 else 3
-#|        fb.fill_rect(x - 8 + k, y + 4, 3, 4, LIME)
-#|        fb.fill_rect(x + 5 - k, y + 4, 3, 4, LIME)
-#|    elif e[4] == 1:
-#|        fb.ellipse(x, y, 14, 9, VIOLET, True)
-#|        fb.ellipse(x, y - 2, 5, 5, WHITE, True)
-#|        fb.fill_rect(x - 1, y - 3, 3, 3, BG)
-#|        for i in range(e[3]):
-#|            fb.fill_rect(x - 8 + i * 6, y + 11, 4, 2, CORAL)
-#|    else:                                   # meteor
-#|        fb.ellipse(x, y, 9, 9, rgb(140, 110, 90), True)
-#|        fb.ellipse(x - 3, y - 2, 3, 3, rgb(100, 80, 60), True)
-#|def sp_game(lcd, fb, keys, L, R):
-#|    B = [k for k in (K0, K1, K2, K3) if k != L and k != R]
-#|    x = 120.0
-#|    bullets = []
-#|    enemies = []      # [x, y, fas, liv, typ]  typ 0 grön, 1 lila, 2 meteor
-#|    shots = []
-#|    drops = []        # [x, y]  trippelskott
-#|    stars = Stars(40, VW, VH)
-#|    parts = Particles(80)
+#|    scroll = 0.0
+#|    nitro = 0.0               # mätare 0..100
+#|    boost = 0
+#|    near = 0
+#|    bonus = 0
+#|    cars = []                 # [x, y, egen fart, färg, nära-räknad]
+#|    gap = 0.0
+#|    parts = Particles(50)
 #|    pops = Popups()
-#|    lives = 3
-#|    inv = 60
-#|    score = 0
-#|    purple = 0
-#|    triple = 0
-#|    bombs = 1
-#|    next_bomb = 1000
-#|    spawn = 30
 #|    t = 0
 #|    keys.wait_release()
 #|    while True:
@@ -5594,124 +5404,311 @@ main()
 #|        if keys.pause():
 #|            return None
 #|        if keys.held(L):
-#|            x -= 5
+#|            vx -= 1.3
 #|        if keys.held(R):
-#|            x += 5
-#|        x = max(14, min(VW - 14, x))
-#|        if bombs and any(keys.pressed(k) for k in B):
-#|            bombs -= 1
-#|            for e in enemies:
-#|                parts.burst(e[0], e[1], AMBER, 8, 3, 14)
-#|                score += 10
-#|            enemies = []
-#|            shots = []
-#|            for k in range(6):
-#|                fb.fill(WHITE if k % 2 == 0 else BG)
-#|                lcd.show()
-#|                time.sleep_ms(30)
-#|        if t % 6 == 0:
-#|            bullets.append([x, SHIP_Y - 16, 0])
-#|            if triple:
-#|                bullets.append([x - 8, SHIP_Y - 10, -1.5])
-#|                bullets.append([x + 8, SHIP_Y - 10, 1.5])
-#|        if triple:
-#|            triple -= 1
-#|        spawn -= 1
-#|        if spawn <= 0:
-#|            spawn = max(10, 40 - score // 60)
-#|            r = random.random()
-#|            kind = 1 if r < 0.18 else 2 if r < 0.3 and score > 300 else 0
-#|            enemies.append([random.uniform(20, VW - 20), -14, random.uniform(0, 6.3),
-#|                            3 if kind == 1 else 2 if kind == 2 else 1, kind])
-#|        fall = min(1.2 + score / 2500, 3.4)
-#|        for b in bullets:
-#|            b[1] -= 10
-#|            b[0] += b[2]
-#|        bullets = [b for b in bullets if b[1] > -10]
-#|        for e in enemies:
-#|            e[1] += fall * (0.7 if e[4] == 1 else 1.4 if e[4] == 2 else 1.0)
-#|            if e[4] != 2:
-#|                e[0] += math.sin(e[1] * 0.04 + e[2]) * 1.6
-#|            e[0] = max(14, min(VW - 14, e[0]))
-#|            if e[4] != 2 and random.random() < (0.012 if e[4] else 0.005):
-#|                shots.append([e[0], e[1] + 10])
-#|        for s in shots:
-#|            s[1] += 4.5
-#|        shots = [s for s in shots if s[1] < VH + 5]
-#|        for d in drops:
-#|            d[1] += 2
-#|            if abs(d[0] - x) < 14 and abs(d[1] - SHIP_Y) < 14:
-#|                triple = 300
-#|                d[1] = VH + 50
-#|                pops.add(x, SHIP_Y - 30, "TRIPPEL!", AMBER)
-#|        drops = [d for d in drops if d[1] < VH + 10]
-#|        for b in bullets:
-#|            for e in enemies:
-#|                if e[3] > 0 and abs(b[0] - e[0]) < (14 if e[4] == 1 else 10) and abs(b[1] - e[1]) < 10:
-#|                    e[3] -= 1
-#|                    b[1] = -100
-#|                    if e[3] <= 0:
-#|                        score += (10, 50, 20)[e[4]]
-#|                        parts.burst(e[0], e[1], (LIME, VIOLET, rgb(140, 110, 90))[e[4]], 10, 2.5, 14)
-#|                        if e[4] == 1:
-#|                            purple += 1
-#|                            if purple >= 10:
-#|                                goal("anfall", 1)
-#|                            if random.random() < 0.4:
-#|                                drops.append([e[0], e[1]])
-#|                    break
-#|        enemies = [e for e in enemies if e[3] > 0 and e[1] < VH + 20]
-#|        if score >= next_bomb:
-#|            next_bomb += 1000
-#|            bombs += 1
-#|            pops.add(VW // 2, 60, "+1 BOMB", CORAL)
-#|        if score >= 500:
-#|            goal("anfall", 0)
+#|            vx += 1.3
+#|        vx *= 0.78
+#|        x += vx
+#|        if nitro >= 100 and any(keys.pressed(k) for k in N):
+#|            boost = 90
+#|            nitro = 0.0
+#|            pops.add(VW // 2, 200, "NITRO!", AMBER, 2)
+#|        base = min(24.0, 9.0 + dist / 2500)          # fortare och fortare
+#|        target = base + (9 if boost else 0)
+#|        speed += (target - speed) * 0.08
+#|        if boost:
+#|            boost -= 1
+#|        dist += speed
+#|        scroll = (scroll + speed) % 40
+#|        off = x < RX0 or x + CW > RX1
+#|        if off:
+#|            speed *= 0.93
+#|            if t % 2:
+#|                parts.burst(x + CW / 2, PY + CH, rgb(120, 90, 50), 2, 1.5, 8)
+#|        x = max(4.0, min(VW - CW - 4.0, x))
+#|        gap -= speed
+#|        if gap <= 0:
+#|            lane = random.randint(0, LANES - 1)
+#|            own = random.uniform(3.0, 7.0)
+#|            cars.append([RX0 + lane * LW + (LW - CW) / 2, -CH - 10.0, own, random.choice(CAR_COLS), False])
+#|            if dist > 3000 and random.random() < 0.35:              # ibland två bredvid varandra
+#|                lane2 = (lane + random.choice((1, 2, 3))) % LANES
+#|                cars.append([RX0 + lane2 * LW + (LW - CW) / 2, -CH - 70.0, own, random.choice(CAR_COLS), False])
+#|            gap = random.uniform(70, 150) * (1 if dist > 1500 else 1.4)
+#|        crash = False
+#|        for c in cars:
+#|            c[1] += speed - c[2]
+#|            if random.random() < 0.004:
+#|                c[0] += random.choice((-LW, LW))
+#|                c[0] = max(RX0 + (LW - CW) / 2, min(RX1 - LW + (LW - CW) / 2, c[0]))
+#|            if c[1] + CH > PY + 4 and c[1] < PY + CH - 4:
+#|                dx = abs((c[0] + CW / 2) - (x + CW / 2))
+#|                if dx < CW - 3:
+#|                    crash = True
+#|                elif dx < CW + 12 and not c[4]:
+#|                    c[4] = True
+#|                    near += 1
+#|                    bonus += 50
+#|                    nitro = min(100.0, nitro + 20)
+#|                    pops.add(x + CW / 2, PY - 10, "NARA! +50", YELLOW)
+#|                    if near >= 10:
+#|                        goal("turbo", 1)
+#|        cars = [c for c in cars if c[1] < VH + 20]
+#|        nitro = min(100.0, nitro + 0.08)
+#|        score = int(dist / 20) + bonus
 #|        if score >= 2000:
-#|            goal("anfall", 2)
-#|        if inv > 0:
-#|            inv -= 1
-#|        else:
-#|            hit = False
-#|            for e in enemies:
-#|                if abs(e[0] - x) < 16 and abs(e[1] - SHIP_Y) < 12:
-#|                    e[3] = 0
-#|                    hit = True
-#|            for s in shots:
-#|                if abs(s[0] - x) < 10 and SHIP_Y - 14 < s[1] < SHIP_Y + 6:
-#|                    s[1] = VH + 50
-#|                    hit = True
-#|            if hit:
-#|                lives -= 1
-#|                inv = 60
-#|                parts.burst(x, SHIP_Y, AMBER, 20, 3, 18)
-#|                if lives <= 0:
-#|                    for _ in range(25):
-#|                        t1 = time.ticks_ms()
-#|                        fb.fill(BG)
-#|                        parts.draw(fb)
-#|                        lcd.show()
-#|                        wait(t1)
-#|                    return score
-#|        fb.fill(BG)
-#|        stars.draw(fb, 0.0, 1.5)
-#|        for e in enemies:
-#|            draw_alien(fb, e, t)
-#|        for d in drops:
-#|            fb.ellipse(int(d[0]), int(d[1]), 7, 7, AMBER, True)
-#|            fb.text("3", int(d[0]) - 3, int(d[1]) - 3, BG)
-#|        for b in bullets:
-#|            fb.fill_rect(int(b[0]) - 1, int(b[1]), 2, 7, YELLOW)
-#|        for s in shots:
-#|            fb.fill_rect(int(s[0]) - 2, int(s[1]), 4, 4, CORAL)
+#|            goal("turbo", 0)
+#|        if score >= 8000:
+#|            goal("turbo", 2)
+#|        s = int(scroll)
+#|        for y in range(-40, VH, 40):
+#|            fb.fill_rect(0, y + s, VW, 20, GRASS[0])
+#|            fb.fill_rect(0, y + s + 20, VW, 20, GRASS[1])
+#|        fb.fill_rect(RX0, 0, RX1 - RX0, VH, ROAD)
+#|        for y in range(-40, VH, 20):
+#|            c = CORAL if ((y + s) // 20) % 2 else WHITE
+#|            fb.fill_rect(RX0 - 5, y + s % 20, 5, 20, c)
+#|            fb.fill_rect(RX1, y + s % 20, 5, 20, c)
+#|        for k in range(1, LANES):
+#|            lx = RX0 + k * LW
+#|            for y in range(-40, VH, 40):
+#|                fb.fill_rect(lx - 1, y + s, 3, 20, WHITE)
+#|        if speed > 16:                                  # fartstreck
+#|            for k in range(6):
+#|                sx = (k * 41 + t * 7) % VW
+#|                sy = (k * 67 + t * 31) % VH
+#|                fb.vline(sx, sy, int(speed * 2), rgb(200, 200, 220))
+#|        for c in cars:
+#|            draw_car(fb, c[0], c[1], c[3])
+#|        if boost:
+#|            for k in range(3):
+#|                fb.fill_rect(int(x) + 6 + k * 4, PY + CH, 3, 6 + random.randint(0, 10), random.choice((AMBER, YELLOW, CORAL)))
+#|        draw_car(fb, x, PY, SKY if not boost else AMBER, True, t)
 #|        parts.draw(fb)
 #|        pops.draw(fb)
-#|        if inv == 0 or (t // 4) % 2 == 0:
-#|            draw_ship(fb, int(x), t, triple)
 #|        big(fb, str(score), 6, 6, WHITE, 2)
+#|        kmh = int(speed * 12)
+#|        rtext(fb, "%d km/h" % kmh, VW - 6, 8, YELLOW if boost else WHITE)
+#|        fb.rect(6, 26, 80, 8, WHITE)
+#|        fb.fill_rect(7, 27, int(78 * nitro / 100), 6, AMBER if nitro >= 100 else rgb(120, 90, 40))
+#|        if nitro >= 100 and (t // 6) % 2:
+#|            fb.text("NITRO! (%d/%d)" % (N[0], N[1]), 92, 26, AMBER)
+#|        if t < 60 and (t // 10) % 2 == 0:
+#|            ctext(fb, "%d <    > %d" % (L, R), 150, WHITE, 2, VW // 2)
+#|        lcd.show()
+#|        if crash:
+#|            for k in range(30):
+#|                t1 = time.ticks_ms()
+#|                if k == 0:
+#|                    parts.burst(x + CW / 2, PY + CH / 2, AMBER, 30, 4, 24)
+#|                fb.fill_rect(0, 0, VW, VH, ROAD if k % 4 < 2 else rgb(120, 30, 30))
+#|                for c in cars:
+#|                    draw_car(fb, c[0], c[1], c[3])
+#|                draw_car(fb, x, PY, rgb(90, 90, 90), True)
+#|                parts.draw(fb)
+#|                stext(fb, "KRASCH!", 120, CORAL, 4, VW // 2)
+#|                lcd.show()
+#|                wait(t1)
+#|            return score
+#|        t += 1
+#|        wait(t0)
+#@@ ras
+#|RB = 6                       # bollens radie
+#|RAS_C = (rgb(220, 225, 240), rgb(240, 60, 60), rgb(80, 220, 110), rgb(250, 210, 40), rgb(170, 110, 60))
+#|RAS_BG = [mix((20, 10, 50), (70, 20, 60), y / (VH - 1)) for y in range(VH)]
+#|def play(lcd, keys):
+#|    return v_play(lcd, keys, "RAS", VIOLET, ("Fall genom halen", "innan taket med", "spikar nar dig!", "Vanster/hoger rullar."), "ras", ras_game)
+#|def ras_row(y, rows):
+#|    """En rad med en eller två plattformar."""
+#|    out = []
+#|    n = 1 if random.random() < 0.5 else 2
+#|    for k in range(n):
+#|        w = random.randint(50, 90)
+#|        x = random.randint(8, VW - 8 - w) if n == 1 else (random.randint(8, 100 - w // 2) if k == 0 else random.randint(130, VW - 8 - w))
+#|        r = random.random()
+#|        hard = min(0.4, rows * 0.006)
+#|        if rows < 3:
+#|            typ = 0
+#|        elif r < 0.12 + hard:
+#|            typ = 1
+#|        elif r < 0.24 + hard:
+#|            typ = 4
+#|        elif r < 0.34 + hard:
+#|            typ = 3
+#|        elif r < 0.42 + hard:
+#|            typ = 2
+#|        else:
+#|            typ = 0
+#|        p = [float(x), float(y), w, typ, random.choice((-1, 1)), 0]   # x, y, bredd, typ, rullriktning, ras-tid
+#|        out.append(p)
+#|    return out
+#|def ras_game(lcd, fb, keys, L, R):
+#|    plats = []
+#|    y = 120.0
+#|    while y < VH + 40:
+#|        plats += ras_row(y, 0)
+#|        y += 56
+#|    start = plats[0]
+#|    bx, by = start[0] + start[2] / 2, start[1] - RB
+#|    vy = 0.0
+#|    lives = 3
+#|    inv = 60
+#|    coins = 0
+#|    passed = 0
+#|    items = []               # [platta, dx, typ] typ 0 mynt, 1 hjärta
+#|    parts = Particles(50)
+#|    pops = Popups()
+#|    t = 0
+#|    keys.wait_release()
+#|    while True:
+#|        t0 = time.ticks_ms()
+#|        keys.update()
+#|        if keys.pause():
+#|            return None
+#|        rise = min(4.2, 1.3 + passed * 0.035)
+#|        if keys.held(L):
+#|            bx -= 4.2
+#|        if keys.held(R):
+#|            bx += 4.2
+#|        bx = max(RB, min(VW - RB, bx))
+#|        for p in plats:
+#|            p[1] -= rise
+#|            if p[5] > 0:
+#|                p[5] -= 1
+#|                if p[5] == 0:
+#|                    p[3] = -1                                   # rasade
+#|                    parts.burst(p[0] + p[2] / 2, p[1], RAS_C[4], 12, 2, 16, 0.3)
+#|        kept = []
+#|        for p in plats:
+#|            if p[1] < 14:
+#|                if p[3] >= 0:
+#|                    passed += 1
+#|            else:
+#|                kept.append(p)
+#|        plats = kept
+#|        low = max(p[1] for p in plats) if plats else 0
+#|        if low < VH - 20:
+#|            row = ras_row(low + 56, passed)
+#|            plats += row
+#|            if random.random() < 0.35:
+#|                q = random.choice(row)
+#|                if q[3] in (0, 3, 4):
+#|                    items.append([q, random.uniform(8, q[2] - 8), 1 if random.random() < 0.06 else 0])
+#|        items = [it for it in items if it[0] in plats and it[0][3] >= 0]
+#|        vy = min(8.0, vy + 0.55)
+#|        ny = by + vy
+#|        on = None
+#|        for p in plats:
+#|            if p[3] < 0:
+#|                continue
+#|            if p[0] - RB / 2 < bx < p[0] + p[2] + RB / 2 and by + RB <= p[1] + rise + 1 and ny + RB >= p[1]:
+#|                on = p
+#|                break
+#|        if on:
+#|            by = on[1] - RB
+#|            if on[3] == 2:
+#|                vy = -7.5
+#|                parts.burst(bx, by + RB, RAS_C[2], 6, 1.5, 8)
+#|            else:
+#|                vy = 0.0
+#|            if on[3] == 3:
+#|                bx += 2.2 * on[4]
+#|            if on[3] == 4 and on[5] == 0:
+#|                on[5] = 16
+#|            if on[3] == 1 and not inv:
+#|                lives -= 1
+#|                inv = 60
+#|                vy = -6.0
+#|                parts.burst(bx, by, CORAL, 16, 3, 16)
+#|                pops.add(bx, by - 14, "AJ!", CORAL)
+#|        else:
+#|            by = ny
+#|        for it in items:
+#|            ix, iy = it[0][0] + it[1], it[0][1] - 10
+#|            if abs(ix - bx) < 10 and abs(iy - by) < 12:
+#|                if it[2] == 0:
+#|                    coins += 1
+#|                    pops.add(ix, iy - 8, "+20", YELLOW)
+#|                    if coins >= 20:
+#|                        goal("ras", 1)
+#|                else:
+#|                    lives = min(5, lives + 1)
+#|                    pops.add(ix, iy - 8, "+1 LIV", PINK)
+#|                parts.burst(ix, iy, YELLOW, 8, 2, 10)
+#|                it[0] = None
+#|        items = [it for it in items if it[0] is not None]
+#|        if inv:
+#|            inv -= 1
+#|        if (by - RB < 18 or by > VH + RB) and not inv:
+#|            lives -= 1
+#|            parts.burst(bx, min(by, VH - 4), CORAL, 20, 3, 18)
+#|            inv = 70
+#|            if lives > 0:                                       # börja om på en säker platta
+#|                best = None
+#|                for p in plats:
+#|                    if p[3] in (0, 3) and 120 < p[1] < 260:
+#|                        best = p
+#|                        break
+#|                if best is None:
+#|                    best = plats[len(plats) // 2]
+#|                    best[3] = 0
+#|                bx, by, vy = best[0] + best[2] / 2, best[1] - RB, 0.0
+#|        score = passed * 10 + coins * 20
+#|        if score >= 500:
+#|            goal("ras", 0)
+#|        if score >= 2000:
+#|            goal("ras", 2)
+#|        if lives <= 0:
+#|            for k in range(25):
+#|                t1 = time.ticks_ms()
+#|                gradient(fb, RAS_BG, 0, VH)
+#|                parts.draw(fb)
+#|                stext(fb, "SLUT!", 130, CORAL, 4, VW // 2)
+#|                lcd.show()
+#|                wait(t1)
+#|            return score
+#|        gradient(fb, RAS_BG, 0, VH)
+#|        off = int(t * rise) % 32
+#|        for yy in range(-32, VH, 32):
+#|            fb.fill_rect(0, yy - off + 32, 4, 30, rgb(60, 40, 90))
+#|            fb.fill_rect(VW - 4, yy - off + 48, 4, 30, rgb(60, 40, 90))
+#|        for p in plats:
+#|            if p[3] < 0:
+#|                continue
+#|            x, yy, w = int(p[0]), int(p[1]), p[2]
+#|            c = RAS_C[p[3]]
+#|            dx = random.randint(-1, 1) if p[5] else 0
+#|            fb.fill_rect(x + dx, yy, w, 7, c)
+#|            fb.hline(x + dx, yy, w, WHITE)
+#|            if p[3] == 1:
+#|                for k in range(0, w - 4, 6):
+#|                    tri(fb, x + k, yy, x + k + 6, yy, x + k + 3, yy - 6, c)
+#|            elif p[3] == 3:
+#|                for k in range((t * 2 * p[4]) % 8, w, 8):
+#|                    fb.vline(x + k, yy + 2, 4, BLACK)
+#|            elif p[3] == 2:
+#|                fb.fill_rect(x + w // 2 - 6, yy - 3, 12, 3, WHITE)
+#|        for it in items:
+#|            ix, iy = int(it[0][0] + it[1]), int(it[0][1] - 10)
+#|            if it[2] == 0:
+#|                wdt = int(5 * abs(math.sin(t * 0.15 + ix)))
+#|                fb.ellipse(ix, iy, wdt + 1, 6, YELLOW, True)
+#|            else:
+#|                fb.ellipse(ix - 3, iy - 2, 4, 4, PINK, True)
+#|                fb.ellipse(ix + 3, iy - 2, 4, 4, PINK, True)
+#|                tri(fb, ix - 7, iy - 1, ix + 7, iy - 1, ix, iy + 7, PINK)
+#|        for k in range(0, VW, 10):                                  # spiktaket
+#|            tri(fb, k, 0, k + 10, 0, k + 5, 14, rgb(200, 200, 220))
+#|        if not inv or (t // 3) % 2:
+#|            fb.ellipse(int(bx), int(by), RB, RB, AMBER, True)
+#|            fb.ellipse(int(bx) - 2, int(by) - 2, 2, 2, WHITE, True)
+#|        parts.draw(fb)
+#|        pops.draw(fb)
+#|        big(fb, str(score), 6, 18, WHITE, 2)
 #|        for i in range(lives):
-#|            fb.fill_rect(VW - 16 - i * 14, 8, 10, 8, SKY)
-#|        fb.text("BOMB %d (%d/%d)" % (bombs, B[0], B[1]), 6, 26, CORAL if bombs else DIM)
+#|            fb.ellipse(VW - 14 - i * 14, 26, 5, 5, PINK, True)
+#|        if t < 60 and (t // 10) % 2 == 0:
+#|            ctext(fb, "%d <    > %d" % (L, R), 280, WHITE, 2, VW // 2)
 #|        lcd.show()
 #|        t += 1
 #|        wait(t0)

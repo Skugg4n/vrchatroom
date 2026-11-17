@@ -337,34 +337,32 @@ def sb_icon(i):
     return rgb(int(150 + 100 * math.sin(a)), int(150 + 100 * math.sin(a + 2.1)), int(150 + 100 * math.sin(a + 4.2)))
 
 
-def icon_rusa(fb, x, y, t):
-    for yy in range(0, 30, 3):
-        fb.fill_rect(x, y + yy, 160, 3, mix((40, 20, 90), (255, 150, 90), yy / 30))
-    fb.fill_rect(x, y + 30, 160, 42, rgb(30, 100, 50))
-    tri(fb, x + 80, y + 30, x + 20, y + 72, x + 140, y + 72, rgb(80, 72, 70))
-    for k in range(3):
-        yy = y + 32 + ((t * 2 + k * 14) % 40)
-        fb.fill_rect(x + 79, yy, 2, 4, WHITE)
-    fb.fill_rect(x + 74, y + 40, 12, 14, TEAL)
-    fb.ellipse(x + 80, y + 36, 5, 5, rgb(255, 200, 150), True)
-    fb.fill_rect(x + 74 + ((t // 3) % 2) * 6, y + 54, 5, 8, rgb(50, 80, 200))
+def icon_turbo(fb, x, y, t):
+    fb.fill_rect(x, y, 160, 72, rgb(40, 140, 60))
+    fb.fill_rect(x + 40, y, 80, 72, rgb(60, 60, 68))
+    for k in range(4):
+        yy = (k * 20 + t * 6) % 80 - 8
+        fb.fill_rect(x + 79, y + max(0, yy), 2, 10 if yy >= 0 else 10 + yy, WHITE)
+    oy = (t * 4) % 110 - 30
+    if -14 < oy < 52:
+        fb.fill_rect(x + 50, y + max(0, oy), 14, 20 + min(0, oy), CORAL)
+    px = x + 84 + int(14 * math.sin(t * 0.1))
+    fb.fill_rect(px, y + 46, 14, 22, SKY)
+    fb.fill_rect(px + 3, y + 50, 8, 5, rgb(40, 50, 80))
     fb.rect(x + 140, y + 4, 14, 24, WHITE)
     fb.fill_rect(x + 145, y + 24, 4, 2, WHITE)
 
 
-def icon_anfall(fb, x, y, t):
-    fb.fill_rect(x, y, 160, 72, BG)
-    for i in range(14):
-        fb.pixel(x + (i * 37) % 160, y + (i * 23 + t) % 72, WHITE)
-    for k in range(3):
-        ax = x + 30 + k * 40
-        ay = y + 10 + (t + k * 9) % 20
-        fb.fill_rect(ax - 6, ay - 4, 12, 7, LIME if k != 1 else VIOLET)
-    sx = x + 80 + int(30 * math.sin(t * 0.07))
-    fb.fill_rect(sx - 2, y + 50, 4, 12, WHITE)
-    fb.fill_rect(sx - 9, y + 58, 18, 4, SKY)
-    for k in range(3):
-        fb.fill_rect(sx - 1, y + 44 - ((t * 6 + k * 15) % 40), 2, 5, YELLOW)
+def icon_ras(fb, x, y, t):
+    fb.fill_rect(x, y, 160, 72, rgb(30, 14, 54))
+    for k in range(0, 160, 10):
+        tri(fb, x + k, y, x + k + 10, y, x + k + 5, y + 8, rgb(200, 200, 220))
+    for k, (px, c) in enumerate(((20, 0), (90, 2), (40, 4), (100, 1))):
+        py = y + 72 - ((t * 2 + k * 22) % 64)
+        if py > y + 10:
+            fb.fill_rect(x + px, py, 44, 5, (rgb(220, 225, 240), rgb(240, 60, 60), rgb(80, 220, 110),
+                                             rgb(250, 210, 40), rgb(170, 110, 60))[c])
+    fb.ellipse(x + 70 + int(20 * math.sin(t * 0.07)), y + 36, 6, 6, AMBER, True)
     fb.rect(x + 140, y + 4, 14, 24, WHITE)
     fb.fill_rect(x + 145, y + 24, 4, 2, WHITE)
 
@@ -720,7 +718,7 @@ GAMES = (
     ("pac", "SPOKJAKT", YELLOW, ("At alla prickar!", "Stora prickar gor", "spoken atbara."),
      ("upp", "hoger", "vanster", "ner"), icon_pac),
     ("orm", "ORM", rgb(90, 220, 90), ("At applen och vax.", "Guldapple och chili!", "Nya banor var 8:e."),
-     ("upp", "hoger", "vanster", "ner"), icon_orm),
+     ("svang <", "svang >", "svang <", "svang >"), icon_orm),
     ("2048", "2048", G_COL[4], ("Skjut brickorna at", "ett hall. Lika tal", "slas ihop. Na 2048!"),
      ("upp", "hoger", "vanster", "ner"), icon_2048),
     ("invasion", "INVASION", LIME, ("Skjut ner invasionen", "innan den landar.", "Full matare = laser"),
@@ -731,10 +729,10 @@ GAMES = (
      ("P1 <", "P2 <", "P1 >", "P2 >"), icon_kurvan),
     ("stapla", "STAPLA", CORAL, ("STAENDE SPEL!", "Bygg ett hogt torn.", "Perfekt = vaxer."),
      None, icon_stapla),
-    ("rusa", "RUSA", AMBER, ("STAENDE SPEL!", "Spring, byt fil och", "hoppa over hinder."),
-     None, icon_rusa),
-    ("anfall", "ANFALL", LIME, ("STAENDE SPEL!", "Skjut ner allt som", "kommer. Bomber!"),
-     None, icon_anfall),
+    ("turbo", "TURBO", SKY, ("STAENDE SPEL!", "Vaj mellan bilarna", "i full fart. NITRO!"),
+     None, icon_turbo),
+    ("ras", "RAS", VIOLET, ("STAENDE SPEL!", "Fall genom halen", "innan spikarna!"),
+     None, icon_ras),
 )
 
 

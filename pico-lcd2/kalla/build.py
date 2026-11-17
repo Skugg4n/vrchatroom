@@ -18,7 +18,7 @@ GAME_FILES = (
     ("tetris", "tetris.py"), ("ladr", "ladr.py"), ("flode", "flode.py"),
     ("aventyr", "aventyr.py"), ("dino", "dino.py"), ("studs", "studs.py"), ("pac", "pac.py"),
     ("orm", "orm.py"), ("2048", "g2048.py"), ("invasion", "invasion.py"), ("kross", "kross.py"),
-    ("kurvan", "kurvan.py"), ("stapla", "stapla.py"), ("rusa", "rusa.py"), ("anfall", "anfall.py"),
+    ("kurvan", "kurvan.py"), ("stapla", "stapla.py"), ("turbo", "turbo.py"), ("ras", "ras.py"),
 )
 
 
