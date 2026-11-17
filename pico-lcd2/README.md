@@ -1,6 +1,6 @@
 # PICO SPEL
 
-Tio spel i **en enda fil** (`main.py`) för **Raspberry Pi Pico 2 (H)** med **Waveshare Pico-LCD-2** (2", 320x240).
+Femton spel (tolv liggande och tre stående) i **en enda fil** (`main.py`) för **Raspberry Pi Pico 2 (H)** med **Waveshare Pico-LCD-2** (2", 320x240).
 
 ## Kom igång
 
@@ -25,16 +25,28 @@ KEY3 (nere vänster)    KEY2 (nere höger)
 
 | Spel | Vad | KEY0 | KEY1 | KEY3 | KEY2 |
 |------|-----|------|------|------|------|
-| **TETRIS** | Tre lägen: MARATON, SPRINT 40 (så snabbt som möjligt) och SKATT (gräv fram guld i skräprader som växer) | vänster | höger | släpp direkt | vrid |
-| **LÅDOR** | Sokoban med 20 banor. Knuffa lådorna till prickarna på så få drag som möjligt | upp | höger | vänster | ner |
-| **FLÖDE** | Koppla ihop prickar med samma färg och fyll rutnätet. 25 banor + TIDSJAKT | upp | höger | vänster | ner |
+| **TETRIS** | Tre lägen: MARATON (går fortare och fortare: ny nivå var 6:e rad eller var 40:e sekund), SPRINT 40 och SKATT (gräv fram guld i skräprader som växer) | vänster | höger | släpp direkt | vrid |
+| **LÅDOR** | Sokoban med 60 banor. Knuffa lådorna till prickarna på så få drag som möjligt | upp | höger | vänster | ner |
+| **FLÖDE** | Koppla ihop prickar med samma färg och fyll rutnätet. 100 banor (5x5 till 9x9) + TIDSJAKT | upp | höger | vänster | ner |
 | **ÄVENTYR** | Plattformsspel med 8 banor: mynt, 3 ädelstenar per bana, kontrollpunkter, monster, is, lava, moln | vänster | höger | dash | hoppa |
+| **DINO** | Spring, hoppa (dubbelhopp!) och ducka. Mynt, sköld, fåglar, dag och natt. Fortare och fortare | ducka | hoppa | ducka | hoppa |
 | **STUDS** | Hoppa uppåt genom NATTEN, HIMLEN, RYMDEN och GALAXEN. Jetpack, fjäderskor, moln och fladdermöss | vänster | höger | | skjut |
 | **SPÖKJAKT** | Pac-Man med tre labyrinter, fyra spöken med egna personligheter och bonusfrukt | upp | höger | vänster | ner |
+| **ORM** | Snake med fem banor (ny var 8:e äpple), guldäpple och chili-turbo | upp | höger | vänster | ner |
 | **2048** | Pusslet med glidande brickor | upp | höger | vänster | ner |
 | **INVASION** | Space Invaders med skydd, UFO, power-ups och superlaser | vänster | höger | superlaser | skjut |
 | **KROSS** | Breakout med 6 banor, sprängstenar och power-ups | vänster | höger | skjut iväg bollen | skjut iväg bollen / laser |
 | **KURVAN** | Achtung die Kurve mot datorn, mot 2 datorer eller 2 spelare | P1 vänster | P2 vänster | P1 höger | P2 höger |
+
+### Stående spel
+
+Vrid skärmen ett kvarts varv. Första gången visar spelet en pil som ska peka uppåt, och sedan trycker du på knappen till vänster och knappen till höger. Det sparas (tryck på en annan knapp på startskärmen för att ställa in igen).
+
+| Spel | Vad | Vänster/höger | De andra knapparna |
+|------|-----|---------------|--------------------|
+| **STAPLA** | Bygg ett så högt torn som möjligt. Perfekt träff = blocket växer | släpp | släpp |
+| **RUSA** | Spring längs vägen i tre filer genom fyra världar, ta mynt | byt fil | hoppa över låga hinder |
+| **ANFALL** | Rymdskjutare: gröna, lila (tål tre skott, tappar trippelskott) och meteorer | styr | bomb (en extra per 1000 poäng) |
 
 I spelen med fyra riktningar visar pilarna i skärmens hörn vilken knapp som är vilken riktning.
 
@@ -50,7 +62,9 @@ Varje spel har tre utmaningar. Klarar du en får du en stjärna (det syns direkt
 
 Stjärnorna låser upp:
 - **Tetris SPRINT 40** (3 stjärnor) och **SKATT** (8 stjärnor)
-- **Menyteman:** SOLNEDGÅNG (8), HAV (16), SKOG (22) och GULD (30). Byt tema med 2 på stjärnskärmen.
+- **Menyteman**, som är små animerade scener: NATT (stjärnfall), HAV (5, fiskar och bubblor), SOLNEDGÅNG (10), SKOG (16, eldflugor), SNÖ (22, snöfall och snögubbe), RYMD (28, ljusfart), RETRO (35, rutnät) och GULD (42, myntregn). Byt tema med 2 på stjärnskärmen.
+
+Det finns 45 stjärnor att samla (3 per spel).
 
 ## Så funkar filen
 

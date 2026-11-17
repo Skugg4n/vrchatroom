@@ -25,6 +25,7 @@ for _n in list(globals()):
 gc.collect()
 
 W, H = 320, 240
+VW, VH = 240, 320                  # stående läge
 FB = bytearray(W * H * 2)          # skärmbilden skapas allra först
 
 import machine
@@ -94,6 +95,8 @@ class LCD(framebuf.FrameBuffer):
     def __init__(self):
         super().__init__(FB, W, H, framebuf.RGB565)
         self.buffer = FB
+        self.pfb = framebuf.FrameBuffer(FB, VW, VH, framebuf.RGB565)   # samma minne, stående
+        self.port = False
         self.cs = Pin(9, Pin.OUT, value=1)
         self.rst = Pin(12, Pin.OUT, value=1)
         self.dc = Pin(8, Pin.OUT, value=1)
@@ -128,15 +131,29 @@ class LCD(framebuf.FrameBuffer):
             self.spi.write(bytearray(data))
         self.cs(1)
 
+    def window(self, mad, w, h):
+        self.cmd(0x36, [mad])
+        self.cmd(0x2A, [0, 0, (w - 1) >> 8, (w - 1) & 0xFF])
+        self.cmd(0x2B, [0, 0, (h - 1) >> 8, (h - 1) & 0xFF])
+
+    def portrait(self):
+        self.port = True
+        self.window(0x00, VW, VH)
+
+    def landscape(self):
+        self.port = False
+        self.window(0x70, W, H)
+
     def show(self):
         if TOAST[1] > 0:                     # "UTMANING KLAR!" ovanpå spelet
             TOAST[1] -= 1
+            fb, x, w = (self.pfb, 4, 232) if self.port else (self, 30, 260)
             y = 4 if TOAST[1] > 4 else 4 - (4 - TOAST[1]) * 6
-            self.fill_rect(30, y, 260, 30, rgb(30, 22, 6))
-            self.rect(30, y, 260, 30, YELLOW)
-            star(self, 46, y + 15, 9, YELLOW)
-            self.text("UTMANING KLAR!", 62, y + 5, YELLOW)
-            self.text(TOAST[0][:26], 62, y + 17, WHITE)
+            fb.fill_rect(x, y, w, 30, rgb(30, 22, 6))
+            fb.rect(x, y, w, 30, YELLOW)
+            star(fb, x + 16, y + 15, 9, YELLOW)
+            fb.text("UTMANING KLAR!", x + 32, y + 5, YELLOW)
+            fb.text(TOAST[0][:(w - 40) // 8], x + 32, y + 17, WHITE)
         self.cmd(0x2C)
         self.cs(0)
         self.dc(1)
@@ -298,22 +315,24 @@ def shuffled(n):
 
 
 class Stars:
-    def __init__(self, n=40):
-        self.s = [[random.randint(0, W - 1), random.randint(0, H - 1), random.randint(1, 3)]
+    def __init__(self, n=40, w=W, h=H):
+        self.w, self.h = w, h
+        self.s = [[random.randint(0, w - 1), random.randint(0, h - 1), random.randint(1, 3)]
                   for _ in range(n)]
 
     @native
     def draw(self, fb, dx=0.0, dy=0.5):
+        w, h = self.w, self.h
         for s in self.s:
             s[0] += dx * s[2]
             s[1] += dy * s[2]
-            if s[1] >= H:
-                s[1] -= H
-                s[0] = random.randint(0, W - 1)
+            if s[1] >= h:
+                s[1] -= h
+                s[0] = random.randint(0, w - 1)
             if s[0] < 0:
-                s[0] += W
-            elif s[0] >= W:
-                s[0] -= W
+                s[0] += w
+            elif s[0] >= w:
+                s[0] -= w
             fb.pixel(int(s[0]), int(s[1]), STAR_C[s[2] - 1])
 
 
@@ -438,6 +457,11 @@ CHALLENGES = {
     "invasion": ("Klara vag 3", "Anvand superlasern", "Fa 3000 poang"),
     "kross": ("Klara bana 2", "Fanga en multiboll", "Klara bana 5"),
     "kurvan": ("Vinn en runda", "Vinn en match mot datorn", "Vinn mot 2 datorer"),
+    "dino": ("Na 500", "Ta 50 mynt i en runda", "Na 2000"),
+    "orm": ("At 20 applen", "Na niva 4", "At 60 applen"),
+    "stapla": ("Bygg 15 vaningar", "3 perfekta i rad", "Bygg 40 vaningar"),
+    "rusa": ("Na 1000", "Ta 30 mynt i en runda", "Na 3000"),
+    "anfall": ("Na 500", "Skjut ner 10 lila", "Na 2000"),
 }
 
 

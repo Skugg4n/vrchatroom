@@ -16,9 +16,9 @@ OUT = os.path.join(HERE, "..", "main.py")
 # menynyckel -> fil i spel/
 GAME_FILES = (
     ("tetris", "tetris.py"), ("ladr", "ladr.py"), ("flode", "flode.py"),
-    ("aventyr", "aventyr.py"), ("studs", "studs.py"), ("pac", "pac.py"),
-    ("2048", "g2048.py"), ("invasion", "invasion.py"), ("kross", "kross.py"),
-    ("kurvan", "kurvan.py"),
+    ("aventyr", "aventyr.py"), ("dino", "dino.py"), ("studs", "studs.py"), ("pac", "pac.py"),
+    ("orm", "orm.py"), ("2048", "g2048.py"), ("invasion", "invasion.py"), ("kross", "kross.py"),
+    ("kurvan", "kurvan.py"), ("stapla", "stapla.py"), ("rusa", "rusa.py"), ("anfall", "anfall.py"),
 )
 
 
@@ -46,6 +46,9 @@ def main():
         src = open(path).read()
         parts.append("#@@ %s\n" % key)
         for line in src.rstrip("\n").split("\n"):
+            st = line.strip()
+            if not st or (st.startswith("#") and not st.startswith("#@")):
+                continue                    # tomma rader och kommentarer behövs inte på Picon
             parts.append("#|" + line + "\n")
     parts.append("#@@ slut\n")
     out = "".join(parts)

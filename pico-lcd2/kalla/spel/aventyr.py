@@ -418,7 +418,6 @@ def play(lcd, keys):
 
 def av_select(lcd, keys, best, gems, sel):
     n = len(AV_LEVELS)
-    stars = Stars(30)
     t = 0
     keys.wait_release()
     while True:
@@ -436,8 +435,7 @@ def av_select(lcd, keys, best, gems, sel):
             return sel
         if keys.pressed(K3):
             return None
-        gradient(lcd, theme_bg())
-        stars.draw(lcd)
+        theme_draw(lcd, t)
         big(lcd, "AVENTYR", 12, 10, SHADOW, 3)
         big(lcd, "AVENTYR", 10, 8, LIME, 3)
         rtext(lcd, "0/1 valj", W - 8, 10, GRAY)

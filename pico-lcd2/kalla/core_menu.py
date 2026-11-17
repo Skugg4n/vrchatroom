@@ -5,7 +5,6 @@ def choose(lcd, keys, title, options, col, sub="", locked=()):
     locked = text för alternativ som är låsta (tom sträng = öppet)."""
     sel = 0
     t = 0
-    stars = Stars(30)
     keys.wait_release()
     while True:
         t0 = time.ticks_ms()
@@ -20,8 +19,7 @@ def choose(lcd, keys, title, options, col, sub="", locked=()):
             return sel
         if keys.pressed(K3):
             return None
-        gradient(lcd, theme_bg())
-        stars.draw(lcd)
+        theme_draw(lcd, t)
         stext(lcd, title, 22 + int(3 * math.sin(t * 0.15)), col, 4)
         if sub:
             ctext(lcd, sub, 64, GRAY)
@@ -295,17 +293,100 @@ def hero(fb, x, y, face, t, col=None):
     fb.fill_rect(x + 1, y + 6, 3, 2 if s else 3, rgb(50, 80, 200))
 
 
+def icon_dino(fb, x, y, t):
+    for yy in range(0, 56, 4):
+        fb.fill_rect(x, y + yy, 160, 4, mix((90, 170, 255), (200, 235, 255), yy / 56))
+    fb.fill_rect(x, y + 56, 160, 16, rgb(210, 180, 120))
+    fb.ellipse(x + 130, y + 14, 8, 8, rgb(255, 230, 90), True)
+    cx = x + 160 - (t * 3) % 180
+    if cx > x - 20:
+        for k in range(2):
+            fb.fill_rect(cx + k * 10, y + 34, 6, 22, rgb(50, 160, 70))
+    jy = int(abs(math.sin(t * 0.12)) * 22)
+    c = rgb(120, 210, 120)
+    fb.fill_rect(x + 30, y + 32 - jy, 12, 8, c)
+    fb.fill_rect(x + 22, y + 39 - jy, 14, 10, c)
+    fb.fill_rect(x + 24, y + 49 - jy, 3, 7, c)
+    fb.fill_rect(x + 31, y + 49 - jy, 3, 7, c)
+    fb.fill_rect(x + 37, y + 34 - jy, 2, 2, BLACK)
+
+
+def icon_orm(fb, x, y, t):
+    fb.fill_rect(x, y, 160, 72, rgb(10, 40, 26))
+    path = ((4, 2), (5, 2), (6, 2), (7, 2), (7, 3), (7, 4), (8, 4), (9, 4), (10, 4))
+    n = 3 + (t // 6) % 7
+    for i in range(min(n, len(path))):
+        px, py = path[i]
+        fb.fill_rect(x + px * 12, y + py * 12, 11, 11, rgb(90, 220, 90) if i % 2 else rgb(60, 180, 70))
+    fb.ellipse(x + 12 * 11 + 6, y + 4 * 12 + 6, 5, 5, CORAL, True)
+
+
+def icon_stapla(fb, x, y, t):
+    fb.fill_rect(x, y, 160, 72, rgb(40, 60, 120))
+    for i in range(5):
+        w = 70 - i * 6
+        fb.fill_rect(x + 45 + i * 3, y + 60 - i * 10, w, 10, sb_icon(i))
+    mx = x + 20 + int(50 + 50 * math.sin(t * 0.08))
+    fb.fill_rect(mx - 25, y + 6, 46, 10, sb_icon(5))
+    fb.rect(x + 140, y + 4, 14, 24, WHITE)                     # "stående"-märke
+    fb.fill_rect(x + 145, y + 24, 4, 2, WHITE)
+
+
+def sb_icon(i):
+    a = i * 0.25
+    return rgb(int(150 + 100 * math.sin(a)), int(150 + 100 * math.sin(a + 2.1)), int(150 + 100 * math.sin(a + 4.2)))
+
+
+def icon_rusa(fb, x, y, t):
+    for yy in range(0, 30, 3):
+        fb.fill_rect(x, y + yy, 160, 3, mix((40, 20, 90), (255, 150, 90), yy / 30))
+    fb.fill_rect(x, y + 30, 160, 42, rgb(30, 100, 50))
+    tri(fb, x + 80, y + 30, x + 20, y + 72, x + 140, y + 72, rgb(80, 72, 70))
+    for k in range(3):
+        yy = y + 32 + ((t * 2 + k * 14) % 40)
+        fb.fill_rect(x + 79, yy, 2, 4, WHITE)
+    fb.fill_rect(x + 74, y + 40, 12, 14, TEAL)
+    fb.ellipse(x + 80, y + 36, 5, 5, rgb(255, 200, 150), True)
+    fb.fill_rect(x + 74 + ((t // 3) % 2) * 6, y + 54, 5, 8, rgb(50, 80, 200))
+    fb.rect(x + 140, y + 4, 14, 24, WHITE)
+    fb.fill_rect(x + 145, y + 24, 4, 2, WHITE)
+
+
+def icon_anfall(fb, x, y, t):
+    fb.fill_rect(x, y, 160, 72, BG)
+    for i in range(14):
+        fb.pixel(x + (i * 37) % 160, y + (i * 23 + t) % 72, WHITE)
+    for k in range(3):
+        ax = x + 30 + k * 40
+        ay = y + 10 + (t + k * 9) % 20
+        fb.fill_rect(ax - 6, ay - 4, 12, 7, LIME if k != 1 else VIOLET)
+    sx = x + 80 + int(30 * math.sin(t * 0.07))
+    fb.fill_rect(sx - 2, y + 50, 4, 12, WHITE)
+    fb.fill_rect(sx - 9, y + 58, 18, 4, SKY)
+    for k in range(3):
+        fb.fill_rect(sx - 1, y + 44 - ((t * 6 + k * 15) % 40), 2, 5, YELLOW)
+    fb.rect(x + 140, y + 4, 14, 24, WHITE)
+    fb.fill_rect(x + 145, y + 24, 4, 2, WHITE)
+
+
 # ---------------------------------------------------------------
 # Teman för menyn (låses upp med stjärnor)
 # ---------------------------------------------------------------
-THEMES = (
-    ("NATT", 0, ((16, 14, 40), (36, 14, 54))),
-    ("SOLNEDGANG", 8, ((60, 20, 60), (140, 60, 40))),
-    ("HAV", 16, ((6, 30, 60), (10, 80, 90))),
-    ("SKOG", 22, ((10, 40, 20), (40, 70, 30))),
-    ("GULD", 30, ((60, 40, 6), (120, 90, 20))),
+THEMES = (   # namn, stjärnor som behövs, himmel uppe/nere
+    ("NATT", 0, ((10, 10, 34), (40, 16, 60))),
+    ("HAV", 5, ((10, 70, 120), (4, 20, 50))),
+    ("SOLNEDGANG", 10, ((70, 20, 90), (250, 120, 60))),
+    ("SKOG", 16, ((8, 30, 24), (30, 70, 40))),
+    ("SNO", 22, ((40, 50, 90), (130, 150, 190))),
+    ("RYMD", 28, ((0, 0, 8), (16, 6, 36))),
+    ("RETRO", 35, ((30, 0, 60), (230, 60, 150))),
+    ("GULD", 42, ((70, 46, 6), (150, 110, 24))),
 )
 _THEME_BG = [None, -1]
+TH_PTS = [((i * 73 + 11) % W, (i * 37 + 5) % H, i) for i in range(40)]
+TH_MOUNT = bytearray(41)
+for _i in range(41):
+    TH_MOUNT[_i] = 40 + int(18 * math.sin(_i * 0.5) + 10 * math.sin(_i * 1.3 + 1))
 
 
 def theme_bg():
@@ -315,6 +396,265 @@ def theme_bg():
         _THEME_BG[0] = [mix(a, b, y / (H - 1)) for y in range(H)]
         _THEME_BG[1] = i
     return _THEME_BG[0]
+
+
+def theme_draw(fb, t):
+    """Menyns bakgrund: en liten animerad scen för varje tema."""
+    bg = theme_bg()
+    gradient(fb, bg)
+    n = SCORES.get("theme", 0) % len(THEMES)
+    if n == 0:                                          # NATT: stjärnor, måne, stjärnfall
+        for x, y, i in TH_PTS:
+            if (t // 5 + i) % 9:
+                fb.fill_rect(x, y, 2 if i % 5 == 0 else 1, 2 if i % 5 == 0 else 1, (WHITE, GRAY, DIM)[i % 3])
+        fb.ellipse(104, 196, 15, 15, rgb(250, 240, 200), True)
+        fb.ellipse(97, 191, 13, 13, bg[191], True)
+        k = t % 160
+        if k < 24:
+            x, y = 20 + k * 11, 30 + k * 4
+            fb.line(x, y, x - 22, y - 8, WHITE)
+            fb.line(x - 22, y - 8, x - 40, y - 15, GRAY)
+    elif n == 1:                                        # HAV: bubblor, fiskar, sjögräs
+        for x, y, i in TH_PTS[:16]:
+            by = H - ((t * (1 + i % 3) + y) % (H + 20))
+            bx = x + int(4 * math.sin(t * 0.08 + i))
+            fb.ellipse(bx, by, 2 + i % 3, 2 + i % 3, rgb(150, 210, 255))
+        for i, c in enumerate((CORAL, AMBER, YELLOW, PINK)):
+            d = 1 if i % 2 else -1
+            sp = 1 + i % 3
+            x = (t * sp + i * 97) % (W + 60) - 30
+            if d < 0:
+                x = W - x
+            y = 60 + i * 38 + int(6 * math.sin(t * 0.05 + i))
+            fb.ellipse(x, y, 9, 5, c, True)
+            tri(fb, x - d * 8, y, x - d * 15, y - 5, x - d * 15, y + 5, c)
+            fb.fill_rect(x + d * 4, y - 2, 2, 2, BLACK)
+        fb.fill_rect(0, H - 10, W, 10, rgb(200, 170, 110))
+        for k in range(9):
+            bx = 12 + k * 37
+            for j in range(6):
+                fb.fill_rect(bx + int(4 * math.sin(t * 0.07 + j * 0.6 + k)), H - 16 - j * 9, 4, 10, rgb(40, 160, 90))
+    elif n == 2:                                        # SOLNEDGÅNG: retro-sol, berg, fåglar
+        sy = 150 + int(6 * math.sin(t * 0.02))
+        fb.ellipse(70, sy, 50, 50, rgb(255, 210, 80), True)
+        for k in range(6):
+            fb.fill_rect(10, sy + 6 + k * 8, 120, 2 + k // 2, bg[min(H - 1, sy + 6 + k * 8)])
+        for i in range(40):
+            h = TH_MOUNT[i]
+            fb.fill_rect(i * 8, H - h, 8, h, rgb(50, 16, 50))
+        for k in range(3):
+            x = (t + k * 120) % (W + 40) - 20
+            y = 50 + k * 22 + int(3 * math.sin(t * 0.2 + k))
+            w = 4 if (t // 6 + k) % 2 else 2
+            fb.line(x - 6, y - w, x, y, BLACK)
+            fb.line(x, y, x + 6, y - w, BLACK)
+    elif n == 3:                                        # SKOG: granar och eldflugor
+        for k in range(9):
+            x = k * 38 + (12 if k % 2 else 0)
+            h = 90 + (k * 37) % 50
+            c = rgb(14, 60, 34) if k % 2 else rgb(20, 80, 44)
+            fb.fill_rect(x + 12, H - 20, 6, 20, rgb(60, 40, 20))
+            for j in range(5):
+                w = 30 - j * 5
+                fb.fill_rect(x + 15 - w // 2, H - 20 - (j + 1) * h // 6, w, h // 6 + 2, c)
+        for x, y, i in TH_PTS[:18]:
+            fx = (x + int(20 * math.sin(t * 0.03 + i))) % W
+            fy = 40 + (y + int(14 * math.sin(t * 0.05 + i * 2))) % 170
+            if (t // 4 + i) % 6 < 4:
+                fb.fill_rect(fx, fy, 2, 2, rgb(220, 255, 120))
+    elif n == 4:                                        # SNÖ: snöfall, kullar, snögubbe
+        fb.ellipse(70, H + 40, 140, 70, rgb(230, 238, 250), True)
+        fb.ellipse(260, H + 50, 130, 80, rgb(210, 222, 245), True)
+        fb.ellipse(112, 204, 14, 14, WHITE, True)
+        fb.ellipse(112, 182, 10, 10, WHITE, True)
+        fb.fill_rect(109, 181, 2, 2, BLACK)
+        fb.fill_rect(115, 181, 2, 2, BLACK)
+        fb.fill_rect(112, 184, 5, 2, AMBER)
+        for x, y, i in TH_PTS:
+            fy = (y + t * (1 + i % 2)) % H
+            fx = (x + int(8 * math.sin(t * 0.04 + i))) % W
+            fb.fill_rect(fx, fy, 2 + i % 2, 2 + i % 2, WHITE)
+    elif n == 5:                                        # RYMD: ljusfart och planet
+        for x, y, i in TH_PTS[:30]:
+            a = i * 0.7
+            dx, dy = math.cos(a), math.sin(a)
+            r = (t * (2 + i % 4) + i * 13) % 200
+            x0, y0 = 160 + int(dx * r), 120 + int(dy * r)
+            l = 2 + r // 25
+            fb.line(x0, y0, x0 + int(dx * l), y0 + int(dy * l), WHITE if r > 60 else GRAY)
+        fb.ellipse(50, 196, 26, 26, rgb(90, 140, 220), True)
+        fb.ellipse(44, 190, 10, 6, rgb(140, 190, 250), True)
+        fb.ellipse(50, 196, 44, 8, rgb(220, 190, 120))
+    elif n == 6:                                        # RETRO: sol och rutnät
+        fb.ellipse(70, 120, 44, 44, rgb(255, 200, 60), True)
+        for k in range(5):
+            fb.fill_rect(20, 96 + k * 6, 100, 1 + k // 2, bg[96 + k * 6])
+        fb.fill_rect(0, 122, W, H - 122, rgb(20, 0, 40))
+        c = rgb(255, 60, 200)
+        fb.hline(0, 122, W, c)
+        for k in range(8):
+            f = ((k + (t % 20) / 20) / 8)
+            fb.hline(0, 122 + int(118 * f * f), W, c)
+        for k in range(-8, 9):
+            fb.line(70 + k * 10, 122, 70 + k * 60, H, c)
+    else:                                               # GULD: myntregn
+        for x, y, i in TH_PTS[:20]:
+            cy = (y + t * (2 + i % 3)) % (H + 20) - 10
+            w = int(6 * abs(math.sin(t * 0.1 + i)))
+            fb.ellipse(x, cy, w + 1, 7, YELLOW, True)
+            if w > 2:
+                fb.ellipse(x, cy, w - 2, 4, AMBER, True)
+        for x, y, i in TH_PTS[20:]:
+            if (t // 3 + i) % 10 == 0:
+                fb.hline(x - 4, y, 9, WHITE)
+                fb.vline(x, y - 4, 9, WHITE)
+
+
+# ---------------------------------------------------------------
+# Stående spel (skärmen vriden ett kvarts varv)
+# ---------------------------------------------------------------
+V_BG = [mix((14, 12, 44), (60, 16, 80), y / (VH - 1)) for y in range(VH)]
+
+
+def v_calibrate(lcd, keys):
+    """Frågar vilken knapp som är vänster och höger när man håller skärmen stående."""
+    fb = lcd.pfb
+    stars = Stars(30, VW, VH)
+    got = []
+    t = 0
+    keys.wait_release()
+    while len(got) < 2:
+        t0 = time.ticks_ms()
+        keys.update()
+        if keys.pause():
+            return False
+        for k in range(4):
+            if keys.pressed(k) and k not in got:
+                got.append(k)
+                break
+        gradient(fb, V_BG, 0, VH)
+        stars.draw(fb)
+        stext(fb, "STAENDE", 18, TEAL, 3, VW // 2)
+        ctext(fb, "Vrid skarmen sa att", 64, WHITE, 1, VW // 2)
+        ctext(fb, "pilen pekar uppat", 76, WHITE, 1, VW // 2)
+        bob = int(4 * math.sin(t * 0.2))
+        tri(fb, 100, 116 + bob, 140, 116 + bob, 120, 94 + bob, YELLOW)
+        fb.fill_rect(111, 116 + bob, 19, 36, YELLOW)
+        ctext(fb, "Tryck pa knappen", 186, WHITE, 1, VW // 2)
+        ctext(fb, "som sitter till", 198, WHITE, 1, VW // 2)
+        stext(fb, "VANSTER" if not got else "HOGER", 218, YELLOW, 3, VW // 2)
+        if (t // 8) % 2 == 0:
+            if not got:
+                big(fb, "<", 8, 262, YELLOW, 4)
+            else:
+                big(fb, ">", VW - 40, 262, YELLOW, 4)
+        if got:
+            ctext(fb, "Vanster = KEY%d" % got[0], 300, GRAY, 1, VW // 2)
+        lcd.show()
+        t += 1
+        wait(t0)
+    SCORES["_vl"], SCORES["_vr"] = got[0], got[1]
+    save_scores()
+    keys.wait_release()
+    return True
+
+
+def v_start(lcd, keys, title, col, lines, key, L, R):
+    """Startskärm. Svar: 'go', 'exit' eller 'calib'."""
+    fb = lcd.pfb
+    stars = Stars(30, VW, VH)
+    t = 0
+    keys.wait_release()
+    while True:
+        t0 = time.ticks_ms()
+        keys.update()
+        if keys.pause():
+            keys.wait_release()
+            return "exit"
+        if keys.pressed(L) or keys.pressed(R):
+            return "go"
+        for k in range(4):
+            if k != L and k != R and keys.pressed(k):
+                return "calib"
+        gradient(fb, V_BG, 0, VH)
+        stars.draw(fb)
+        stext(fb, title, 40 + int(4 * math.sin(t * 0.15)), col, 4, VW // 2)
+        for i, line in enumerate(lines):
+            ctext(fb, line, 110 + i * 14, WHITE, 1, VW // 2)
+        ctext(fb, "Rekord: %d" % SCORES.get(key, 0), 196, col, 1, VW // 2)
+        if (t // 10) % 2 == 0:
+            ctext(fb, "Tryck %d eller %d" % (L, R), 232, YELLOW, 2, VW // 2)
+        ctext(fb, "%d = vanster   %d = hoger" % (L, R), 264, GRAY, 1, VW // 2)
+        ctext(fb, "Annan knapp: stall in", 284, DIM, 1, VW // 2)
+        ctext(fb, "Hall alla 4: till menyn", 300, DIM, 1, VW // 2)
+        lcd.show()
+        t += 1
+        wait(t0)
+
+
+def v_over(lcd, keys, key, score, col, L, R):
+    """Slutskärm i stående läge. True = spela igen."""
+    best, new = submit(key, score)
+    fb = lcd.pfb
+    stars = Stars(30, VW, VH)
+    t = 0
+    keys.wait_release()
+    while True:
+        t0 = time.ticks_ms()
+        keys.update()
+        if t > 15:
+            if keys.pressed(L):
+                return True
+            if keys.pressed(R) or keys.pause():
+                keys.wait_release()
+                return False
+        gradient(fb, V_BG, 0, VH)
+        stars.draw(fb)
+        if new:
+            for _ in range(20):
+                fb.fill_rect(random.randint(0, VW - 3), random.randint(0, VH - 3), 3, 3,
+                             random.choice(CONFETTI))
+        dy = int(4 * math.sin(t * 0.2))
+        stext(fb, "GAME", 40 + dy, col, 4, VW // 2)
+        stext(fb, "OVER", 80 + dy, col, 4, VW // 2)
+        ctext(fb, str(score), 140, WHITE, 4, VW // 2)
+        if new:
+            if (t // 8) % 2 == 0:
+                ctext(fb, "NYTT REKORD!", 196, YELLOW, 2, VW // 2)
+        else:
+            ctext(fb, "Rekord: %d" % best, 200, GRAY, 1, VW // 2)
+        ctext(fb, "%d: spela igen" % L, 256, WHITE, 1, VW // 2)
+        ctext(fb, "%d: till menyn" % R, 272, WHITE, 1, VW // 2)
+        lcd.show()
+        t += 1
+        wait(t0)
+
+
+def v_play(lcd, keys, title, col, lines, key, fn):
+    """Kör ett stående spel. fn(lcd, fb, keys, L, R) ger poäng (None = avbrutet)."""
+    lcd.portrait()
+    try:
+        if "_vl" not in SCORES and not v_calibrate(lcd, keys):
+            return None
+        while True:
+            L, R = SCORES["_vl"], SCORES["_vr"]
+            r = v_start(lcd, keys, title, col, lines, key, L, R)
+            if r == "exit":
+                return None
+            if r == "calib":
+                if not v_calibrate(lcd, keys):
+                    return None
+                continue
+            while True:
+                gc.collect()
+                score = fn(lcd, lcd.pfb, keys, L, R)
+                if score is None:
+                    break
+                if not v_over(lcd, keys, key, score, col, L, R):
+                    return None
+    finally:
+        lcd.landscape()
+        keys.wait_release()
 
 
 # ---------------------------------------------------------------
@@ -373,10 +713,14 @@ GAMES = (
      ("upp", "hoger", "vanster", "ner"), icon_flode),
     ("aventyr", "AVENTYR", LIME, ("Spring, hoppa och", "dasha genom banorna.", "Ta mynt och stenar!"),
      ("vanster", "hoger", "dash", "hoppa"), icon_aventyr),
+    ("dino", "DINO", rgb(120, 210, 120), ("Hoppa over kaktusar,", "ducka for faglar.", "Fortare och fortare!"),
+     ("ducka", "hoppa", "ducka", "hoppa"), icon_dino),
     ("studs", "STUDS", SKY, ("Studsa hogt upp! Nya", "varldar, jetpack och", "monster pa vagen."),
      ("vanster", "hoger", "", "skjut"), icon_studs),
     ("pac", "SPOKJAKT", YELLOW, ("At alla prickar!", "Stora prickar gor", "spoken atbara."),
      ("upp", "hoger", "vanster", "ner"), icon_pac),
+    ("orm", "ORM", rgb(90, 220, 90), ("At applen och vax.", "Guldapple och chili!", "Nya banor var 8:e."),
+     ("upp", "hoger", "vanster", "ner"), icon_orm),
     ("2048", "2048", G_COL[4], ("Skjut brickorna at", "ett hall. Lika tal", "slas ihop. Na 2048!"),
      ("upp", "hoger", "vanster", "ner"), icon_2048),
     ("invasion", "INVASION", LIME, ("Skjut ner invasionen", "innan den landar.", "Full matare = laser"),
@@ -385,11 +729,16 @@ GAMES = (
      ("vanster", "hoger", "skjut", "skjut"), icon_kross),
     ("kurvan", "KURVAN", VIOLET, ("Rita en linje och", "krocka inte! Mot", "datorn eller 2 spel."),
      ("P1 <", "P2 <", "P1 >", "P2 >"), icon_kurvan),
+    ("stapla", "STAPLA", CORAL, ("STAENDE SPEL!", "Bygg ett hogt torn.", "Perfekt = vaxer."),
+     None, icon_stapla),
+    ("rusa", "RUSA", AMBER, ("STAENDE SPEL!", "Spring, byt fil och", "hoppa over hinder."),
+     None, icon_rusa),
+    ("anfall", "ANFALL", LIME, ("STAENDE SPEL!", "Skjut ner allt som", "kommer. Bomber!"),
+     None, icon_anfall),
 )
 
 
 def menu(lcd, keys, sel):
-    stars = Stars(36)
     t = 0
     keys.wait_release()
     while True:
@@ -406,8 +755,7 @@ def menu(lcd, keys, sel):
             stars_screen(lcd, keys, sel)
             keys.wait_release()
         key, name, col, desc, ctrl, icon = GAMES[sel]
-        gradient(lcd, theme_bg())
-        stars.draw(lcd, -0.3, 0.0)
+        theme_draw(lcd, t)
         # Rubrik
         x = 6
         for i, ch in enumerate("PICO SPEL"):
@@ -418,10 +766,16 @@ def menu(lcd, keys, sel):
             x += 24
         star(lcd, 240, 17, 8, YELLOW)
         big(lcd, "%d" % total_stars(), 252, 10, YELLOW, 2)
-        rtext(lcd, "/30", W - 4, 14, GRAY)
-        # Listan
-        for i, g in enumerate(GAMES):
-            y = 38 + i * 20
+        rtext(lcd, "/%d" % (3 * len(GAMES)), W - 4, 14, GRAY)
+        # Listan (rullar, 10 rader syns)
+        first = max(0, min(sel - 4, len(GAMES) - 10))
+        if first > 0:
+            tri(lcd, 66, 36, 76, 36, 71, 31, WHITE)
+        if first + 10 < len(GAMES):
+            tri(lcd, 66, 234, 76, 234, 71, 239, WHITE)
+        for i in range(first, min(len(GAMES), first + 10)):
+            g = GAMES[i]
+            y = 38 + (i - first) * 20
             if i == sel:
                 lcd.fill_rect(4, y - 2, 134, 19, g[2])
                 if len(g[1]) > 7:
@@ -446,15 +800,19 @@ def menu(lcd, keys, sel):
         best = SCORES.get(key)
         if isinstance(best, int) and best > 0:
             ctext(lcd, "Rekord: %d" % best, 176, WHITE, 1, 230)
-        a, b, c, d = ctrl
         lcd.hline(150, 190, 160, LINE)
-        lcd.text("0 " + a, 152, 196, WHITE)
-        if b:
-            rtext(lcd, b + " 1", 310, 196, WHITE)
-        if c:
-            lcd.text("3 " + c, 152, 210, WHITE)
-        if d:
-            rtext(lcd, d + " 2", 310, 210, WHITE)
+        if ctrl is None:
+            ctext(lcd, "Vrid skarmen nar", 196, WHITE, 1, 230)
+            ctext(lcd, "spelet startar.", 210, WHITE, 1, 230)
+        else:
+            a, b, c, d = ctrl
+            lcd.text("0 " + a, 152, 196, WHITE)
+            if b:
+                rtext(lcd, b + " 1", 310, 196, WHITE)
+            if c:
+                lcd.text("3 " + c, 152, 210, WHITE)
+            if d:
+                rtext(lcd, d + " 2", 310, 210, WHITE)
         ctext(lcd, "2 spela   3 stjarnor", 226, DIM, 1, 230)
         lcd.show()
         t += 1
@@ -485,11 +843,11 @@ def stars_screen(lcd, keys, sel):
                     break
             save_scores()
         key, name, col = GAMES[sel][0], GAMES[sel][1], GAMES[sel][2]
-        gradient(lcd, theme_bg())
+        theme_draw(lcd, t)
         big(lcd, "STJARNOR", 14, 11, SHADOW, 3)
         big(lcd, "STJARNOR", 12, 9, YELLOW, 3)
         star(lcd, 236, 20, 10, YELLOW)
-        big(lcd, "%d/30" % total_stars(), 250, 13, YELLOW, 1)
+        big(lcd, "%d/%d" % (total_stars(), 3 * len(GAMES)), 250, 13, YELLOW, 1)
         lcd.fill_rect(10, 44, 300, 104, PANEL)
         lcd.rect(10, 44, 300, 104, col)
         ctext(lcd, "< " + name + " >", 52, col, 2)
@@ -503,20 +861,21 @@ def stars_screen(lcd, keys, sel):
             lcd.text(txt, 46, y, WHITE if got[i] else GRAY)
         # Teman
         n = total_stars()
-        lcd.text("MENYTEMA (2 byter):", 12, 160, GRAY)
+        lcd.text("MENYTEMA (2 byter):", 12, 154, WHITE)
         cur = SCORES.get("theme", 0)
         for i, (tn, need, cols) in enumerate(THEMES):
-            x = 12 + i * 61
+            x = 12 + (i % 4) * 75
+            y = 166 + (i // 4) * 25
             a, b = cols
-            lcd.fill_rect(x, 174, 56, 24, mix(a, b, 0.5))
+            lcd.fill_rect(x, y, 70, 21, mix(a, b, 0.5) if need <= n else PANEL)
             if i == cur:
-                lcd.rect(x - 2, 172, 60, 28, WHITE)
+                lcd.rect(x - 2, y - 2, 74, 25, WHITE)
             if need > n:
-                lcd.text("%d" % need, x + 4, 182, AMBER)
-                star(lcd, x + 40, 186, 5, AMBER)
+                lcd.text("%d" % need, x + 14, y + 7, AMBER)
+                star(lcd, x + 46, y + 10, 5, AMBER)
             else:
-                lcd.text(tn[:7], x + 2, 182, WHITE)
-        ctext(lcd, "0/1 byt spel   3 tillbaka", 222, GRAY)
+                lcd.text(tn[:8], x + 3, y + 7, WHITE)
+        ctext(lcd, "0/1 byt spel   3 tillbaka", 228, WHITE)
         lcd.show()
         t += 1
         wait(t0)

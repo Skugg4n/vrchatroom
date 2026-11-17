@@ -156,12 +156,23 @@ def tetris(lcd, keys, mode):
                 parts.burst(TX + (px + cx) * TC + 5, TY + (py + cy) * TC + 10,
                             T_LIGHT[cur], 2, 1.5, 10)
         # Tyngdkraft
-        fall += 1
-        interval = max(2, int(30 * (0.84 ** (level - 1)))) if mode == 0 else (8 if mode == 1 else 14)
-        if fall >= interval:
-            fall = 0
+        # MARATON: snabbare och snabbare (nivå var 6:e rad, eller var 40:e sekund)
+        if mode == 0 and clock % 1200 == 0 and level < 30:
+            level += 1
+            banner, btxt, bcol = 50, "FORTARE!", CORAL
+            shake.hit(4)
+            if level >= 6:
+                goal("tetris", 2)
+        if mode == 0:
+            fall += min(5.0, 0.04 * (1.3 ** (level - 1)))   # rader per bildruta
+        else:
+            fall += 1 / 8 if mode == 1 else 1 / 14
+        while fall >= 1:
+            fall -= 1
             if fits(cells, px, py + 1):
                 py += 1
+            else:
+                fall = 0
         on_ground = not fits(cells, px, py + 1)
         lock = lock + 1 if on_ground else 0
         if on_ground and (lock > 16 or drop):
@@ -200,7 +211,7 @@ def tetris(lcd, keys, mode):
                     goal("tetris", 0)
                 if len(full) == 4:
                     goal("tetris", 1)
-                new_level = lines // 10 + 1 if mode == 0 else level
+                new_level = max(level, lines // 6 + 1) if mode == 0 else level
                 pops.add(TX + TW * TC // 2, TY + full[0] * TC, "+%d" % gain, AMBER)
                 if len(full) == 4:
                     banner, btxt, bcol = 50, "TETRIS!", PINK

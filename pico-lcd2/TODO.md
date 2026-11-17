@@ -235,3 +235,14 @@
 - [x] fix: unload game module after play and on errors
 - [x] test: rebuilt mock, all 10 games stress-tested, mpy-cross compile
 - [x] docs + git push
+
+## Round 9: fun backgrounds, DINO back, faster Tetris, more games, many more puzzle levels
+- [x] themes: menu themes become animated scenes (not just gradients), more themes
+- [x] tetris: MARATON speeds up clearly (faster gravity curve, level every 8 lines, speed-up flash)
+- [x] new: DINO (runner) with speed-up, day/night, birds, coins, double jump
+- [x] new: more games: ORM (landscape), portrait mode + STAPLA, RUSA, ANFALL (portrait)
+- [x] menu: scrolling game list for 13 games, challenges for new games
+- [ ] lador: many more levels (generator + solver), paged level select
+- [ ] flode: many more levels (bigger sizes), paged level select
+- [ ] test: mock stress all games, solver checks, mpy-cross, screenshots
+- [ ] docs + git push + send main.py

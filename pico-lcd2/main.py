@@ -25,6 +25,7 @@ for _n in list(globals()):
 gc.collect()
 
 W, H = 320, 240
+VW, VH = 240, 320                  # stående läge
 FB = bytearray(W * H * 2)          # skärmbilden skapas allra först
 
 import machine
@@ -94,6 +95,8 @@ class LCD(framebuf.FrameBuffer):
     def __init__(self):
         super().__init__(FB, W, H, framebuf.RGB565)
         self.buffer = FB
+        self.pfb = framebuf.FrameBuffer(FB, VW, VH, framebuf.RGB565)   # samma minne, stående
+        self.port = False
         self.cs = Pin(9, Pin.OUT, value=1)
         self.rst = Pin(12, Pin.OUT, value=1)
         self.dc = Pin(8, Pin.OUT, value=1)
@@ -128,15 +131,29 @@ class LCD(framebuf.FrameBuffer):
             self.spi.write(bytearray(data))
         self.cs(1)
 
+    def window(self, mad, w, h):
+        self.cmd(0x36, [mad])
+        self.cmd(0x2A, [0, 0, (w - 1) >> 8, (w - 1) & 0xFF])
+        self.cmd(0x2B, [0, 0, (h - 1) >> 8, (h - 1) & 0xFF])
+
+    def portrait(self):
+        self.port = True
+        self.window(0x00, VW, VH)
+
+    def landscape(self):
+        self.port = False
+        self.window(0x70, W, H)
+
     def show(self):
         if TOAST[1] > 0:                     # "UTMANING KLAR!" ovanpå spelet
             TOAST[1] -= 1
+            fb, x, w = (self.pfb, 4, 232) if self.port else (self, 30, 260)
             y = 4 if TOAST[1] > 4 else 4 - (4 - TOAST[1]) * 6
-            self.fill_rect(30, y, 260, 30, rgb(30, 22, 6))
-            self.rect(30, y, 260, 30, YELLOW)
-            star(self, 46, y + 15, 9, YELLOW)
-            self.text("UTMANING KLAR!", 62, y + 5, YELLOW)
-            self.text(TOAST[0][:26], 62, y + 17, WHITE)
+            fb.fill_rect(x, y, w, 30, rgb(30, 22, 6))
+            fb.rect(x, y, w, 30, YELLOW)
+            star(fb, x + 16, y + 15, 9, YELLOW)
+            fb.text("UTMANING KLAR!", x + 32, y + 5, YELLOW)
+            fb.text(TOAST[0][:(w - 40) // 8], x + 32, y + 17, WHITE)
         self.cmd(0x2C)
         self.cs(0)
         self.dc(1)
@@ -298,22 +315,24 @@ def shuffled(n):
 
 
 class Stars:
-    def __init__(self, n=40):
-        self.s = [[random.randint(0, W - 1), random.randint(0, H - 1), random.randint(1, 3)]
+    def __init__(self, n=40, w=W, h=H):
+        self.w, self.h = w, h
+        self.s = [[random.randint(0, w - 1), random.randint(0, h - 1), random.randint(1, 3)]
                   for _ in range(n)]
 
     @native
     def draw(self, fb, dx=0.0, dy=0.5):
+        w, h = self.w, self.h
         for s in self.s:
             s[0] += dx * s[2]
             s[1] += dy * s[2]
-            if s[1] >= H:
-                s[1] -= H
-                s[0] = random.randint(0, W - 1)
+            if s[1] >= h:
+                s[1] -= h
+                s[0] = random.randint(0, w - 1)
             if s[0] < 0:
-                s[0] += W
-            elif s[0] >= W:
-                s[0] -= W
+                s[0] += w
+            elif s[0] >= w:
+                s[0] -= w
             fb.pixel(int(s[0]), int(s[1]), STAR_C[s[2] - 1])
 
 
@@ -438,6 +457,11 @@ CHALLENGES = {
     "invasion": ("Klara vag 3", "Anvand superlasern", "Fa 3000 poang"),
     "kross": ("Klara bana 2", "Fanga en multiboll", "Klara bana 5"),
     "kurvan": ("Vinn en runda", "Vinn en match mot datorn", "Vinn mot 2 datorer"),
+    "dino": ("Na 500", "Ta 50 mynt i en runda", "Na 2000"),
+    "orm": ("At 20 applen", "Na niva 4", "At 60 applen"),
+    "stapla": ("Bygg 15 vaningar", "3 perfekta i rad", "Bygg 40 vaningar"),
+    "rusa": ("Na 1000", "Ta 30 mynt i en runda", "Na 3000"),
+    "anfall": ("Na 500", "Skjut ner 10 lila", "Na 2000"),
 }
 
 
@@ -562,7 +586,6 @@ def choose(lcd, keys, title, options, col, sub="", locked=()):
     locked = text för alternativ som är låsta (tom sträng = öppet)."""
     sel = 0
     t = 0
-    stars = Stars(30)
     keys.wait_release()
     while True:
         t0 = time.ticks_ms()
@@ -577,8 +600,7 @@ def choose(lcd, keys, title, options, col, sub="", locked=()):
             return sel
         if keys.pressed(K3):
             return None
-        gradient(lcd, theme_bg())
-        stars.draw(lcd)
+        theme_draw(lcd, t)
         stext(lcd, title, 22 + int(3 * math.sin(t * 0.15)), col, 4)
         if sub:
             ctext(lcd, sub, 64, GRAY)
@@ -852,17 +874,100 @@ def hero(fb, x, y, face, t, col=None):
     fb.fill_rect(x + 1, y + 6, 3, 2 if s else 3, rgb(50, 80, 200))
 
 
+def icon_dino(fb, x, y, t):
+    for yy in range(0, 56, 4):
+        fb.fill_rect(x, y + yy, 160, 4, mix((90, 170, 255), (200, 235, 255), yy / 56))
+    fb.fill_rect(x, y + 56, 160, 16, rgb(210, 180, 120))
+    fb.ellipse(x + 130, y + 14, 8, 8, rgb(255, 230, 90), True)
+    cx = x + 160 - (t * 3) % 180
+    if cx > x - 20:
+        for k in range(2):
+            fb.fill_rect(cx + k * 10, y + 34, 6, 22, rgb(50, 160, 70))
+    jy = int(abs(math.sin(t * 0.12)) * 22)
+    c = rgb(120, 210, 120)
+    fb.fill_rect(x + 30, y + 32 - jy, 12, 8, c)
+    fb.fill_rect(x + 22, y + 39 - jy, 14, 10, c)
+    fb.fill_rect(x + 24, y + 49 - jy, 3, 7, c)
+    fb.fill_rect(x + 31, y + 49 - jy, 3, 7, c)
+    fb.fill_rect(x + 37, y + 34 - jy, 2, 2, BLACK)
+
+
+def icon_orm(fb, x, y, t):
+    fb.fill_rect(x, y, 160, 72, rgb(10, 40, 26))
+    path = ((4, 2), (5, 2), (6, 2), (7, 2), (7, 3), (7, 4), (8, 4), (9, 4), (10, 4))
+    n = 3 + (t // 6) % 7
+    for i in range(min(n, len(path))):
+        px, py = path[i]
+        fb.fill_rect(x + px * 12, y + py * 12, 11, 11, rgb(90, 220, 90) if i % 2 else rgb(60, 180, 70))
+    fb.ellipse(x + 12 * 11 + 6, y + 4 * 12 + 6, 5, 5, CORAL, True)
+
+
+def icon_stapla(fb, x, y, t):
+    fb.fill_rect(x, y, 160, 72, rgb(40, 60, 120))
+    for i in range(5):
+        w = 70 - i * 6
+        fb.fill_rect(x + 45 + i * 3, y + 60 - i * 10, w, 10, sb_icon(i))
+    mx = x + 20 + int(50 + 50 * math.sin(t * 0.08))
+    fb.fill_rect(mx - 25, y + 6, 46, 10, sb_icon(5))
+    fb.rect(x + 140, y + 4, 14, 24, WHITE)                     # "stående"-märke
+    fb.fill_rect(x + 145, y + 24, 4, 2, WHITE)
+
+
+def sb_icon(i):
+    a = i * 0.25
+    return rgb(int(150 + 100 * math.sin(a)), int(150 + 100 * math.sin(a + 2.1)), int(150 + 100 * math.sin(a + 4.2)))
+
+
+def icon_rusa(fb, x, y, t):
+    for yy in range(0, 30, 3):
+        fb.fill_rect(x, y + yy, 160, 3, mix((40, 20, 90), (255, 150, 90), yy / 30))
+    fb.fill_rect(x, y + 30, 160, 42, rgb(30, 100, 50))
+    tri(fb, x + 80, y + 30, x + 20, y + 72, x + 140, y + 72, rgb(80, 72, 70))
+    for k in range(3):
+        yy = y + 32 + ((t * 2 + k * 14) % 40)
+        fb.fill_rect(x + 79, yy, 2, 4, WHITE)
+    fb.fill_rect(x + 74, y + 40, 12, 14, TEAL)
+    fb.ellipse(x + 80, y + 36, 5, 5, rgb(255, 200, 150), True)
+    fb.fill_rect(x + 74 + ((t // 3) % 2) * 6, y + 54, 5, 8, rgb(50, 80, 200))
+    fb.rect(x + 140, y + 4, 14, 24, WHITE)
+    fb.fill_rect(x + 145, y + 24, 4, 2, WHITE)
+
+
+def icon_anfall(fb, x, y, t):
+    fb.fill_rect(x, y, 160, 72, BG)
+    for i in range(14):
+        fb.pixel(x + (i * 37) % 160, y + (i * 23 + t) % 72, WHITE)
+    for k in range(3):
+        ax = x + 30 + k * 40
+        ay = y + 10 + (t + k * 9) % 20
+        fb.fill_rect(ax - 6, ay - 4, 12, 7, LIME if k != 1 else VIOLET)
+    sx = x + 80 + int(30 * math.sin(t * 0.07))
+    fb.fill_rect(sx - 2, y + 50, 4, 12, WHITE)
+    fb.fill_rect(sx - 9, y + 58, 18, 4, SKY)
+    for k in range(3):
+        fb.fill_rect(sx - 1, y + 44 - ((t * 6 + k * 15) % 40), 2, 5, YELLOW)
+    fb.rect(x + 140, y + 4, 14, 24, WHITE)
+    fb.fill_rect(x + 145, y + 24, 4, 2, WHITE)
+
+
 # ---------------------------------------------------------------
 # Teman för menyn (låses upp med stjärnor)
 # ---------------------------------------------------------------
-THEMES = (
-    ("NATT", 0, ((16, 14, 40), (36, 14, 54))),
-    ("SOLNEDGANG", 8, ((60, 20, 60), (140, 60, 40))),
-    ("HAV", 16, ((6, 30, 60), (10, 80, 90))),
-    ("SKOG", 22, ((10, 40, 20), (40, 70, 30))),
-    ("GULD", 30, ((60, 40, 6), (120, 90, 20))),
+THEMES = (   # namn, stjärnor som behövs, himmel uppe/nere
+    ("NATT", 0, ((10, 10, 34), (40, 16, 60))),
+    ("HAV", 5, ((10, 70, 120), (4, 20, 50))),
+    ("SOLNEDGANG", 10, ((70, 20, 90), (250, 120, 60))),
+    ("SKOG", 16, ((8, 30, 24), (30, 70, 40))),
+    ("SNO", 22, ((40, 50, 90), (130, 150, 190))),
+    ("RYMD", 28, ((0, 0, 8), (16, 6, 36))),
+    ("RETRO", 35, ((30, 0, 60), (230, 60, 150))),
+    ("GULD", 42, ((70, 46, 6), (150, 110, 24))),
 )
 _THEME_BG = [None, -1]
+TH_PTS = [((i * 73 + 11) % W, (i * 37 + 5) % H, i) for i in range(40)]
+TH_MOUNT = bytearray(41)
+for _i in range(41):
+    TH_MOUNT[_i] = 40 + int(18 * math.sin(_i * 0.5) + 10 * math.sin(_i * 1.3 + 1))
 
 
 def theme_bg():
@@ -872,6 +977,265 @@ def theme_bg():
         _THEME_BG[0] = [mix(a, b, y / (H - 1)) for y in range(H)]
         _THEME_BG[1] = i
     return _THEME_BG[0]
+
+
+def theme_draw(fb, t):
+    """Menyns bakgrund: en liten animerad scen för varje tema."""
+    bg = theme_bg()
+    gradient(fb, bg)
+    n = SCORES.get("theme", 0) % len(THEMES)
+    if n == 0:                                          # NATT: stjärnor, måne, stjärnfall
+        for x, y, i in TH_PTS:
+            if (t // 5 + i) % 9:
+                fb.fill_rect(x, y, 2 if i % 5 == 0 else 1, 2 if i % 5 == 0 else 1, (WHITE, GRAY, DIM)[i % 3])
+        fb.ellipse(104, 196, 15, 15, rgb(250, 240, 200), True)
+        fb.ellipse(97, 191, 13, 13, bg[191], True)
+        k = t % 160
+        if k < 24:
+            x, y = 20 + k * 11, 30 + k * 4
+            fb.line(x, y, x - 22, y - 8, WHITE)
+            fb.line(x - 22, y - 8, x - 40, y - 15, GRAY)
+    elif n == 1:                                        # HAV: bubblor, fiskar, sjögräs
+        for x, y, i in TH_PTS[:16]:
+            by = H - ((t * (1 + i % 3) + y) % (H + 20))
+            bx = x + int(4 * math.sin(t * 0.08 + i))
+            fb.ellipse(bx, by, 2 + i % 3, 2 + i % 3, rgb(150, 210, 255))
+        for i, c in enumerate((CORAL, AMBER, YELLOW, PINK)):
+            d = 1 if i % 2 else -1
+            sp = 1 + i % 3
+            x = (t * sp + i * 97) % (W + 60) - 30
+            if d < 0:
+                x = W - x
+            y = 60 + i * 38 + int(6 * math.sin(t * 0.05 + i))
+            fb.ellipse(x, y, 9, 5, c, True)
+            tri(fb, x - d * 8, y, x - d * 15, y - 5, x - d * 15, y + 5, c)
+            fb.fill_rect(x + d * 4, y - 2, 2, 2, BLACK)
+        fb.fill_rect(0, H - 10, W, 10, rgb(200, 170, 110))
+        for k in range(9):
+            bx = 12 + k * 37
+            for j in range(6):
+                fb.fill_rect(bx + int(4 * math.sin(t * 0.07 + j * 0.6 + k)), H - 16 - j * 9, 4, 10, rgb(40, 160, 90))
+    elif n == 2:                                        # SOLNEDGÅNG: retro-sol, berg, fåglar
+        sy = 150 + int(6 * math.sin(t * 0.02))
+        fb.ellipse(70, sy, 50, 50, rgb(255, 210, 80), True)
+        for k in range(6):
+            fb.fill_rect(10, sy + 6 + k * 8, 120, 2 + k // 2, bg[min(H - 1, sy + 6 + k * 8)])
+        for i in range(40):
+            h = TH_MOUNT[i]
+            fb.fill_rect(i * 8, H - h, 8, h, rgb(50, 16, 50))
+        for k in range(3):
+            x = (t + k * 120) % (W + 40) - 20
+            y = 50 + k * 22 + int(3 * math.sin(t * 0.2 + k))
+            w = 4 if (t // 6 + k) % 2 else 2
+            fb.line(x - 6, y - w, x, y, BLACK)
+            fb.line(x, y, x + 6, y - w, BLACK)
+    elif n == 3:                                        # SKOG: granar och eldflugor
+        for k in range(9):
+            x = k * 38 + (12 if k % 2 else 0)
+            h = 90 + (k * 37) % 50
+            c = rgb(14, 60, 34) if k % 2 else rgb(20, 80, 44)
+            fb.fill_rect(x + 12, H - 20, 6, 20, rgb(60, 40, 20))
+            for j in range(5):
+                w = 30 - j * 5
+                fb.fill_rect(x + 15 - w // 2, H - 20 - (j + 1) * h // 6, w, h // 6 + 2, c)
+        for x, y, i in TH_PTS[:18]:
+            fx = (x + int(20 * math.sin(t * 0.03 + i))) % W
+            fy = 40 + (y + int(14 * math.sin(t * 0.05 + i * 2))) % 170
+            if (t // 4 + i) % 6 < 4:
+                fb.fill_rect(fx, fy, 2, 2, rgb(220, 255, 120))
+    elif n == 4:                                        # SNÖ: snöfall, kullar, snögubbe
+        fb.ellipse(70, H + 40, 140, 70, rgb(230, 238, 250), True)
+        fb.ellipse(260, H + 50, 130, 80, rgb(210, 222, 245), True)
+        fb.ellipse(112, 204, 14, 14, WHITE, True)
+        fb.ellipse(112, 182, 10, 10, WHITE, True)
+        fb.fill_rect(109, 181, 2, 2, BLACK)
+        fb.fill_rect(115, 181, 2, 2, BLACK)
+        fb.fill_rect(112, 184, 5, 2, AMBER)
+        for x, y, i in TH_PTS:
+            fy = (y + t * (1 + i % 2)) % H
+            fx = (x + int(8 * math.sin(t * 0.04 + i))) % W
+            fb.fill_rect(fx, fy, 2 + i % 2, 2 + i % 2, WHITE)
+    elif n == 5:                                        # RYMD: ljusfart och planet
+        for x, y, i in TH_PTS[:30]:
+            a = i * 0.7
+            dx, dy = math.cos(a), math.sin(a)
+            r = (t * (2 + i % 4) + i * 13) % 200
+            x0, y0 = 160 + int(dx * r), 120 + int(dy * r)
+            l = 2 + r // 25
+            fb.line(x0, y0, x0 + int(dx * l), y0 + int(dy * l), WHITE if r > 60 else GRAY)
+        fb.ellipse(50, 196, 26, 26, rgb(90, 140, 220), True)
+        fb.ellipse(44, 190, 10, 6, rgb(140, 190, 250), True)
+        fb.ellipse(50, 196, 44, 8, rgb(220, 190, 120))
+    elif n == 6:                                        # RETRO: sol och rutnät
+        fb.ellipse(70, 120, 44, 44, rgb(255, 200, 60), True)
+        for k in range(5):
+            fb.fill_rect(20, 96 + k * 6, 100, 1 + k // 2, bg[96 + k * 6])
+        fb.fill_rect(0, 122, W, H - 122, rgb(20, 0, 40))
+        c = rgb(255, 60, 200)
+        fb.hline(0, 122, W, c)
+        for k in range(8):
+            f = ((k + (t % 20) / 20) / 8)
+            fb.hline(0, 122 + int(118 * f * f), W, c)
+        for k in range(-8, 9):
+            fb.line(70 + k * 10, 122, 70 + k * 60, H, c)
+    else:                                               # GULD: myntregn
+        for x, y, i in TH_PTS[:20]:
+            cy = (y + t * (2 + i % 3)) % (H + 20) - 10
+            w = int(6 * abs(math.sin(t * 0.1 + i)))
+            fb.ellipse(x, cy, w + 1, 7, YELLOW, True)
+            if w > 2:
+                fb.ellipse(x, cy, w - 2, 4, AMBER, True)
+        for x, y, i in TH_PTS[20:]:
+            if (t // 3 + i) % 10 == 0:
+                fb.hline(x - 4, y, 9, WHITE)
+                fb.vline(x, y - 4, 9, WHITE)
+
+
+# ---------------------------------------------------------------
+# Stående spel (skärmen vriden ett kvarts varv)
+# ---------------------------------------------------------------
+V_BG = [mix((14, 12, 44), (60, 16, 80), y / (VH - 1)) for y in range(VH)]
+
+
+def v_calibrate(lcd, keys):
+    """Frågar vilken knapp som är vänster och höger när man håller skärmen stående."""
+    fb = lcd.pfb
+    stars = Stars(30, VW, VH)
+    got = []
+    t = 0
+    keys.wait_release()
+    while len(got) < 2:
+        t0 = time.ticks_ms()
+        keys.update()
+        if keys.pause():
+            return False
+        for k in range(4):
+            if keys.pressed(k) and k not in got:
+                got.append(k)
+                break
+        gradient(fb, V_BG, 0, VH)
+        stars.draw(fb)
+        stext(fb, "STAENDE", 18, TEAL, 3, VW // 2)
+        ctext(fb, "Vrid skarmen sa att", 64, WHITE, 1, VW // 2)
+        ctext(fb, "pilen pekar uppat", 76, WHITE, 1, VW // 2)
+        bob = int(4 * math.sin(t * 0.2))
+        tri(fb, 100, 116 + bob, 140, 116 + bob, 120, 94 + bob, YELLOW)
+        fb.fill_rect(111, 116 + bob, 19, 36, YELLOW)
+        ctext(fb, "Tryck pa knappen", 186, WHITE, 1, VW // 2)
+        ctext(fb, "som sitter till", 198, WHITE, 1, VW // 2)
+        stext(fb, "VANSTER" if not got else "HOGER", 218, YELLOW, 3, VW // 2)
+        if (t // 8) % 2 == 0:
+            if not got:
+                big(fb, "<", 8, 262, YELLOW, 4)
+            else:
+                big(fb, ">", VW - 40, 262, YELLOW, 4)
+        if got:
+            ctext(fb, "Vanster = KEY%d" % got[0], 300, GRAY, 1, VW // 2)
+        lcd.show()
+        t += 1
+        wait(t0)
+    SCORES["_vl"], SCORES["_vr"] = got[0], got[1]
+    save_scores()
+    keys.wait_release()
+    return True
+
+
+def v_start(lcd, keys, title, col, lines, key, L, R):
+    """Startskärm. Svar: 'go', 'exit' eller 'calib'."""
+    fb = lcd.pfb
+    stars = Stars(30, VW, VH)
+    t = 0
+    keys.wait_release()
+    while True:
+        t0 = time.ticks_ms()
+        keys.update()
+        if keys.pause():
+            keys.wait_release()
+            return "exit"
+        if keys.pressed(L) or keys.pressed(R):
+            return "go"
+        for k in range(4):
+            if k != L and k != R and keys.pressed(k):
+                return "calib"
+        gradient(fb, V_BG, 0, VH)
+        stars.draw(fb)
+        stext(fb, title, 40 + int(4 * math.sin(t * 0.15)), col, 4, VW // 2)
+        for i, line in enumerate(lines):
+            ctext(fb, line, 110 + i * 14, WHITE, 1, VW // 2)
+        ctext(fb, "Rekord: %d" % SCORES.get(key, 0), 196, col, 1, VW // 2)
+        if (t // 10) % 2 == 0:
+            ctext(fb, "Tryck %d eller %d" % (L, R), 232, YELLOW, 2, VW // 2)
+        ctext(fb, "%d = vanster   %d = hoger" % (L, R), 264, GRAY, 1, VW // 2)
+        ctext(fb, "Annan knapp: stall in", 284, DIM, 1, VW // 2)
+        ctext(fb, "Hall alla 4: till menyn", 300, DIM, 1, VW // 2)
+        lcd.show()
+        t += 1
+        wait(t0)
+
+
+def v_over(lcd, keys, key, score, col, L, R):
+    """Slutskärm i stående läge. True = spela igen."""
+    best, new = submit(key, score)
+    fb = lcd.pfb
+    stars = Stars(30, VW, VH)
+    t = 0
+    keys.wait_release()
+    while True:
+        t0 = time.ticks_ms()
+        keys.update()
+        if t > 15:
+            if keys.pressed(L):
+                return True
+            if keys.pressed(R) or keys.pause():
+                keys.wait_release()
+                return False
+        gradient(fb, V_BG, 0, VH)
+        stars.draw(fb)
+        if new:
+            for _ in range(20):
+                fb.fill_rect(random.randint(0, VW - 3), random.randint(0, VH - 3), 3, 3,
+                             random.choice(CONFETTI))
+        dy = int(4 * math.sin(t * 0.2))
+        stext(fb, "GAME", 40 + dy, col, 4, VW // 2)
+        stext(fb, "OVER", 80 + dy, col, 4, VW // 2)
+        ctext(fb, str(score), 140, WHITE, 4, VW // 2)
+        if new:
+            if (t // 8) % 2 == 0:
+                ctext(fb, "NYTT REKORD!", 196, YELLOW, 2, VW // 2)
+        else:
+            ctext(fb, "Rekord: %d" % best, 200, GRAY, 1, VW // 2)
+        ctext(fb, "%d: spela igen" % L, 256, WHITE, 1, VW // 2)
+        ctext(fb, "%d: till menyn" % R, 272, WHITE, 1, VW // 2)
+        lcd.show()
+        t += 1
+        wait(t0)
+
+
+def v_play(lcd, keys, title, col, lines, key, fn):
+    """Kör ett stående spel. fn(lcd, fb, keys, L, R) ger poäng (None = avbrutet)."""
+    lcd.portrait()
+    try:
+        if "_vl" not in SCORES and not v_calibrate(lcd, keys):
+            return None
+        while True:
+            L, R = SCORES["_vl"], SCORES["_vr"]
+            r = v_start(lcd, keys, title, col, lines, key, L, R)
+            if r == "exit":
+                return None
+            if r == "calib":
+                if not v_calibrate(lcd, keys):
+                    return None
+                continue
+            while True:
+                gc.collect()
+                score = fn(lcd, lcd.pfb, keys, L, R)
+                if score is None:
+                    break
+                if not v_over(lcd, keys, key, score, col, L, R):
+                    return None
+    finally:
+        lcd.landscape()
+        keys.wait_release()
 
 
 # ---------------------------------------------------------------
@@ -930,10 +1294,14 @@ GAMES = (
      ("upp", "hoger", "vanster", "ner"), icon_flode),
     ("aventyr", "AVENTYR", LIME, ("Spring, hoppa och", "dasha genom banorna.", "Ta mynt och stenar!"),
      ("vanster", "hoger", "dash", "hoppa"), icon_aventyr),
+    ("dino", "DINO", rgb(120, 210, 120), ("Hoppa over kaktusar,", "ducka for faglar.", "Fortare och fortare!"),
+     ("ducka", "hoppa", "ducka", "hoppa"), icon_dino),
     ("studs", "STUDS", SKY, ("Studsa hogt upp! Nya", "varldar, jetpack och", "monster pa vagen."),
      ("vanster", "hoger", "", "skjut"), icon_studs),
     ("pac", "SPOKJAKT", YELLOW, ("At alla prickar!", "Stora prickar gor", "spoken atbara."),
      ("upp", "hoger", "vanster", "ner"), icon_pac),
+    ("orm", "ORM", rgb(90, 220, 90), ("At applen och vax.", "Guldapple och chili!", "Nya banor var 8:e."),
+     ("upp", "hoger", "vanster", "ner"), icon_orm),
     ("2048", "2048", G_COL[4], ("Skjut brickorna at", "ett hall. Lika tal", "slas ihop. Na 2048!"),
      ("upp", "hoger", "vanster", "ner"), icon_2048),
     ("invasion", "INVASION", LIME, ("Skjut ner invasionen", "innan den landar.", "Full matare = laser"),
@@ -942,11 +1310,16 @@ GAMES = (
      ("vanster", "hoger", "skjut", "skjut"), icon_kross),
     ("kurvan", "KURVAN", VIOLET, ("Rita en linje och", "krocka inte! Mot", "datorn eller 2 spel."),
      ("P1 <", "P2 <", "P1 >", "P2 >"), icon_kurvan),
+    ("stapla", "STAPLA", CORAL, ("STAENDE SPEL!", "Bygg ett hogt torn.", "Perfekt = vaxer."),
+     None, icon_stapla),
+    ("rusa", "RUSA", AMBER, ("STAENDE SPEL!", "Spring, byt fil och", "hoppa over hinder."),
+     None, icon_rusa),
+    ("anfall", "ANFALL", LIME, ("STAENDE SPEL!", "Skjut ner allt som", "kommer. Bomber!"),
+     None, icon_anfall),
 )
 
 
 def menu(lcd, keys, sel):
-    stars = Stars(36)
     t = 0
     keys.wait_release()
     while True:
@@ -963,8 +1336,7 @@ def menu(lcd, keys, sel):
             stars_screen(lcd, keys, sel)
             keys.wait_release()
         key, name, col, desc, ctrl, icon = GAMES[sel]
-        gradient(lcd, theme_bg())
-        stars.draw(lcd, -0.3, 0.0)
+        theme_draw(lcd, t)
         # Rubrik
         x = 6
         for i, ch in enumerate("PICO SPEL"):
@@ -975,10 +1347,16 @@ def menu(lcd, keys, sel):
             x += 24
         star(lcd, 240, 17, 8, YELLOW)
         big(lcd, "%d" % total_stars(), 252, 10, YELLOW, 2)
-        rtext(lcd, "/30", W - 4, 14, GRAY)
-        # Listan
-        for i, g in enumerate(GAMES):
-            y = 38 + i * 20
+        rtext(lcd, "/%d" % (3 * len(GAMES)), W - 4, 14, GRAY)
+        # Listan (rullar, 10 rader syns)
+        first = max(0, min(sel - 4, len(GAMES) - 10))
+        if first > 0:
+            tri(lcd, 66, 36, 76, 36, 71, 31, WHITE)
+        if first + 10 < len(GAMES):
+            tri(lcd, 66, 234, 76, 234, 71, 239, WHITE)
+        for i in range(first, min(len(GAMES), first + 10)):
+            g = GAMES[i]
+            y = 38 + (i - first) * 20
             if i == sel:
                 lcd.fill_rect(4, y - 2, 134, 19, g[2])
                 if len(g[1]) > 7:
@@ -1003,15 +1381,19 @@ def menu(lcd, keys, sel):
         best = SCORES.get(key)
         if isinstance(best, int) and best > 0:
             ctext(lcd, "Rekord: %d" % best, 176, WHITE, 1, 230)
-        a, b, c, d = ctrl
         lcd.hline(150, 190, 160, LINE)
-        lcd.text("0 " + a, 152, 196, WHITE)
-        if b:
-            rtext(lcd, b + " 1", 310, 196, WHITE)
-        if c:
-            lcd.text("3 " + c, 152, 210, WHITE)
-        if d:
-            rtext(lcd, d + " 2", 310, 210, WHITE)
+        if ctrl is None:
+            ctext(lcd, "Vrid skarmen nar", 196, WHITE, 1, 230)
+            ctext(lcd, "spelet startar.", 210, WHITE, 1, 230)
+        else:
+            a, b, c, d = ctrl
+            lcd.text("0 " + a, 152, 196, WHITE)
+            if b:
+                rtext(lcd, b + " 1", 310, 196, WHITE)
+            if c:
+                lcd.text("3 " + c, 152, 210, WHITE)
+            if d:
+                rtext(lcd, d + " 2", 310, 210, WHITE)
         ctext(lcd, "2 spela   3 stjarnor", 226, DIM, 1, 230)
         lcd.show()
         t += 1
@@ -1042,11 +1424,11 @@ def stars_screen(lcd, keys, sel):
                     break
             save_scores()
         key, name, col = GAMES[sel][0], GAMES[sel][1], GAMES[sel][2]
-        gradient(lcd, theme_bg())
+        theme_draw(lcd, t)
         big(lcd, "STJARNOR", 14, 11, SHADOW, 3)
         big(lcd, "STJARNOR", 12, 9, YELLOW, 3)
         star(lcd, 236, 20, 10, YELLOW)
-        big(lcd, "%d/30" % total_stars(), 250, 13, YELLOW, 1)
+        big(lcd, "%d/%d" % (total_stars(), 3 * len(GAMES)), 250, 13, YELLOW, 1)
         lcd.fill_rect(10, 44, 300, 104, PANEL)
         lcd.rect(10, 44, 300, 104, col)
         ctext(lcd, "< " + name + " >", 52, col, 2)
@@ -1060,20 +1442,21 @@ def stars_screen(lcd, keys, sel):
             lcd.text(txt, 46, y, WHITE if got[i] else GRAY)
         # Teman
         n = total_stars()
-        lcd.text("MENYTEMA (2 byter):", 12, 160, GRAY)
+        lcd.text("MENYTEMA (2 byter):", 12, 154, WHITE)
         cur = SCORES.get("theme", 0)
         for i, (tn, need, cols) in enumerate(THEMES):
-            x = 12 + i * 61
+            x = 12 + (i % 4) * 75
+            y = 166 + (i // 4) * 25
             a, b = cols
-            lcd.fill_rect(x, 174, 56, 24, mix(a, b, 0.5))
+            lcd.fill_rect(x, y, 70, 21, mix(a, b, 0.5) if need <= n else PANEL)
             if i == cur:
-                lcd.rect(x - 2, 172, 60, 28, WHITE)
+                lcd.rect(x - 2, y - 2, 74, 25, WHITE)
             if need > n:
-                lcd.text("%d" % need, x + 4, 182, AMBER)
-                star(lcd, x + 40, 186, 5, AMBER)
+                lcd.text("%d" % need, x + 14, y + 7, AMBER)
+                star(lcd, x + 46, y + 10, 5, AMBER)
             else:
-                lcd.text(tn[:7], x + 2, 182, WHITE)
-        ctext(lcd, "0/1 byt spel   3 tillbaka", 222, GRAY)
+                lcd.text(tn[:8], x + 3, y + 7, WHITE)
+        ctext(lcd, "0/1 byt spel   3 tillbaka", 228, WHITE)
         lcd.show()
         t += 1
         wait(t0)
@@ -1147,7 +1530,6 @@ main()
 # SPELENS KOD (läses in av load_game när spelet väljs)
 # ===============================================================
 #@@ tetris
-#|# TETRIS: tre lägen. 0 vänster, 1 höger, 2 vrid, 3 släpp direkt.
 #|TC = 11                         # rutstorlek
 #|TW, TH = 10, 20
 #|TX, TY = 105, 10
@@ -1160,7 +1542,6 @@ main()
 #|    ((-1, -1), (-1, 0), (0, 0), (1, 0)),    # J
 #|    ((1, -1), (-1, 0), (0, 0), (1, 0)),     # L
 #|)
-#|# Guld (index 7) och skräp (index 8) läggs till efter de vanliga färgerna
 #|if len(T_FILL) == 7:
 #|    for c in ((255, 215, 0), (110, 110, 135)):
 #|        T_FILL.append(rgb(*c))
@@ -1172,8 +1553,6 @@ main()
 #|T_GRID = rgb(28, 28, 58)
 #|T_BG = [mix((20, 18, 50), (8, 30, 50), y / (H - 1)) for y in range(H)]
 #|T_POINTS = (0, 100, 300, 500, 800)
-#|
-#|
 #|@native
 #|def t_board(fb, board):
 #|    for y in range(TH):
@@ -1182,14 +1561,10 @@ main()
 #|            v = row[x]
 #|            if v:
 #|                t_cell(fb, TX + x * TC, TY + y * TC, v - 1)
-#|
-#|
 #|def fmt_time(f):
 #|    """Bilder (30 per sekund) till m:ss.t"""
 #|    s10 = f * 10 // 30
 #|    return "%d:%02d.%d" % (s10 // 600, (s10 // 10) % 60, s10 % 10)
-#|
-#|
 #|def play(lcd, keys):
 #|    n = total_stars()
 #|    mode = choose(lcd, keys, "TETRIS", ("MARATON", "SPRINT 40", "SKATT"), TEAL,
@@ -1198,8 +1573,6 @@ main()
 #|    if mode is None:
 #|        return None
 #|    return tetris(lcd, keys, mode)
-#|
-#|
 #|def tetris(lcd, keys, mode):
 #|    board = [bytearray(TW) for _ in range(TH)]
 #|    bag = []
@@ -1219,12 +1592,10 @@ main()
 #|    found = 0
 #|    clock = 0
 #|    rise = 0
-#|
 #|    def nxt():
 #|        if not bag:
 #|            bag.extend(shuffled(7))
 #|        return bag.pop()
-#|
 #|    def fits(cells, px, py):
 #|        for cx, cy in cells:
 #|            x = px + cx
@@ -1234,7 +1605,6 @@ main()
 #|            if y >= 0 and board[y][x]:
 #|                return False
 #|        return True
-#|
 #|    queue = [nxt(), nxt(), nxt()]
 #|    cur = nxt()
 #|    cells = SHAPES[cur]
@@ -1304,13 +1674,22 @@ main()
 #|            for cx, cy in cells:
 #|                parts.burst(TX + (px + cx) * TC + 5, TY + (py + cy) * TC + 10,
 #|                            T_LIGHT[cur], 2, 1.5, 10)
-#|        # Tyngdkraft
-#|        fall += 1
-#|        interval = max(2, int(30 * (0.84 ** (level - 1)))) if mode == 0 else (8 if mode == 1 else 14)
-#|        if fall >= interval:
-#|            fall = 0
+#|        if mode == 0 and clock % 1200 == 0 and level < 30:
+#|            level += 1
+#|            banner, btxt, bcol = 50, "FORTARE!", CORAL
+#|            shake.hit(4)
+#|            if level >= 6:
+#|                goal("tetris", 2)
+#|        if mode == 0:
+#|            fall += min(5.0, 0.04 * (1.3 ** (level - 1)))   # rader per bildruta
+#|        else:
+#|            fall += 1 / 8 if mode == 1 else 1 / 14
+#|        while fall >= 1:
+#|            fall -= 1
 #|            if fits(cells, px, py + 1):
 #|                py += 1
+#|            else:
+#|                fall = 0
 #|        on_ground = not fits(cells, px, py + 1)
 #|        lock = lock + 1 if on_ground else 0
 #|        if on_ground and (lock > 16 or drop):
@@ -1349,7 +1728,7 @@ main()
 #|                    goal("tetris", 0)
 #|                if len(full) == 4:
 #|                    goal("tetris", 1)
-#|                new_level = lines // 10 + 1 if mode == 0 else level
+#|                new_level = max(level, lines // 6 + 1) if mode == 0 else level
 #|                pops.add(TX + TW * TC // 2, TY + full[0] * TC, "+%d" % gain, AMBER)
 #|                if len(full) == 4:
 #|                    banner, btxt, bcol = 50, "TETRIS!", PINK
@@ -1383,8 +1762,6 @@ main()
 #|                if mode == 2:
 #|                    return ("GAME OVER", found, None, "Guld hittat av %d" % golds, False, str)
 #|                return score
-#|
-#|        # --- Rita ---
 #|        ox, oy = shake.offset()
 #|        gradient(lcd, T_BG)
 #|        lcd.fill_rect(TX - 4 + ox, TY - 4 + oy, TW * TC + 7, TH * TC + 7, LINE)
@@ -1410,7 +1787,6 @@ main()
 #|        for cx, cy in cells:
 #|            if py + cy >= 0:
 #|                t_cell(lcd, TX + (px + cx) * TC + ox, TY + (py + cy) * TC + oy, cur)
-#|        # Nästa bitar
 #|        lcd.fill_rect(228, 10, 84, 136, PANEL)
 #|        lcd.text("NASTA", 250, 16, GRAY)
 #|        for i, q in enumerate(queue):
@@ -1418,7 +1794,6 @@ main()
 #|            bx, by = 262, 46 + i * 34 + (0 if i == 0 else 6)
 #|            for cx, cy in SHAPES[q]:
 #|                t_cell(lcd, bx + cx * (s + 1), by + cy * (s + 1), q, s)
-#|        # Poäng
 #|        lcd.fill_rect(8, 10, 88, 160, PANEL)
 #|        if mode == 0:
 #|            lcd.text("POANG", 16, 18, GRAY)
@@ -1457,11 +1832,6 @@ main()
 #|        t += 1
 #|        wait(t0)
 #@@ ladr
-#|# LADOR (Sokoban): knuffa alla lådor till de gröna prickarna.
-#|#   pilarna i hörnen: 0 upp, 1 höger, 2 ner, 3 vänster
-#|#   håll alla fyra: 0 ångra, 1 börja om, 2 fortsätt, 3 till banorna
-#|# Banorna är skapade av verktyg/gen_ladr.py och kontrollerade med en lösare.
-#|
 #|LEVELS = (
 #|    (4, ('#######', '#  #  #', '#  $. #', '#$    #', '#+#  ##', '######-')),  # minst 4 knuffar
 #|    (6, ('#######', '#@    #', '#  #$ #', '#.$   #', '#.  ###', '#####--')),  # minst 6 knuffar
@@ -1484,15 +1854,12 @@ main()
 #|    (16, ('-########', '##    . #', '#   .$ ##', '#     $ #', '# .# ##@#', '#  #  $ #', '#  $   .#', '#########')),  # minst 16 knuffar
 #|    (16, ('-#######-', '## ## @##', '#  # $$ #', '#     $.#', '#     $ #', '#    .  #', '#.    #.#', '#########')),  # minst 16 knuffar
 #|)
-#|
 #|L_FLOOR = (rgb(58, 46, 38), rgb(52, 42, 34))
 #|L_WALL = rgb(120, 90, 160)
 #|L_WALL_L = rgb(160, 130, 200)
 #|L_WALL_D = rgb(70, 50, 100)
 #|L_GOAL = rgb(90, 230, 120)
 #|L_BG = [mix((24, 16, 30), (40, 24, 20), y / (H - 1)) for y in range(H)]
-#|
-#|
 #|def l_parse(rows):
 #|    walls, goals, boxes = set(), set(), []
 #|    p = (0, 0)
@@ -1507,8 +1874,6 @@ main()
 #|            if ch in "@+":
 #|                p = (x, y)
 #|    return walls, goals, boxes, p
-#|
-#|
 #|def l_draw(lcd, rows, walls, goals, boxes, p, face, ts, ox, oy, t, hud):
 #|    gradient(lcd, L_BG)
 #|    for y, r in enumerate(rows):
@@ -1535,13 +1900,9 @@ main()
 #|    lcd.text(hud, 4, 3, WHITE)
 #|    for d, (x, y) in enumerate(((10, 24), (W - 10, 24), (W - 10, H - 10), (10, H - 10))):
 #|        arrow(lcd, x, y, d, DIM, 4)
-#|
-#|
 #|def l_time(f):
 #|    s = f // 30
 #|    return "%d:%02d" % (s // 60, s % 60)
-#|
-#|
 #|def play(lcd, keys):
 #|    best = SCORES.get("ladr_best", [0] * len(LEVELS))
 #|    if len(best) != len(LEVELS):
@@ -1575,8 +1936,6 @@ main()
 #|                goal("ladr", 2)
 #|            if sel < len(LEVELS) - 1:
 #|                sel += 1
-#|
-#|
 #|def l_select(lcd, keys, best, sel):
 #|    stars = Stars(30)
 #|    t = 0
@@ -1587,9 +1946,9 @@ main()
 #|        unlocked = 0
 #|        while unlocked < len(LEVELS) and best[unlocked]:
 #|            unlocked += 1
-#|        if keys.repeat(K0, 10, 4):
+#|        if keys.repeat(K0, 10, 2):
 #|            sel = (sel - 1) % len(LEVELS)
-#|        if keys.repeat(K1, 10, 4):
+#|        if keys.repeat(K1, 10, 2):
 #|            sel = (sel + 1) % len(LEVELS)
 #|        if keys.pressed(K2) and sel <= unlocked:
 #|            keys.wait_release()
@@ -1601,11 +1960,13 @@ main()
 #|        big(lcd, "LADOR", 12, 10, SHADOW, 3)
 #|        big(lcd, "LADOR", 10, 8, AMBER, 3)
 #|        done = sum(1 for b in best if b)
-#|        rtext(lcd, "%d/%d klara" % (done, len(LEVELS)), W - 8, 12, GRAY)
-#|        rtext(lcd, "0/1 valj 2 spela 3 ut", W - 8, 24, DIM)
-#|        for i in range(len(LEVELS)):
+#|        rtext(lcd, "%d/%d klara" % (done, len(LEVELS)), W - 8, 6, GRAY)
+#|        rtext(lcd, "SIDA %d/%d" % (sel // 20 + 1, (len(LEVELS) + 19) // 20), W - 8, 17, AMBER)
+#|        rtext(lcd, "0/1 valj 2 spela 3 ut", W - 8, 28, DIM)
+#|        p0 = sel // 20 * 20
+#|        for i in range(p0, min(len(LEVELS), p0 + 20)):
 #|            x = 14 + (i % 5) * 60
-#|            y = 42 + (i // 5) * 40
+#|            y = 42 + (i % 20 // 5) * 40
 #|            if i == sel:
 #|                lcd.fill_rect(x - 3, y - 3, 58, 36, WHITE)
 #|            if best[i]:
@@ -1629,8 +1990,6 @@ main()
 #|        lcd.show()
 #|        t += 1
 #|        wait(t0)
-#|
-#|
 #|def l_level(lcd, keys, n):
 #|    rows = LEVELS[n][1]
 #|    walls, goals, boxes0, p0 = l_parse(rows)
@@ -1697,8 +2056,6 @@ main()
 #|        lcd.show()
 #|        t += 1
 #|        wait(t0)
-#|
-#|
 #|def l_menu(lcd, keys, rows, walls, goals, boxes, p, face, ts, ox, oy, hist):
 #|    """Paus-rutan: 0 ångra (flera gånger), 1 börja om, 2 fortsätt, 3 till banorna."""
 #|    keys.wait_release()
@@ -1725,35 +2082,21 @@ main()
 #|        t += 1
 #|        wait(t0)
 #@@ flode
-#|# FLODE: koppla ihop prickarna med samma färg och fyll hela rutnätet.
-#|#   0 upp, 1 höger, 2 ner, 3 vänster (pilarna i hörnen)
-#|#   Gå in på en prick (eller slutet av en linje) så ritar du.
-#|#   Tryck två knappar samtidigt för att lyfta/sänka pennan och gå fritt.
-#|#   Håll alla fyra: 0 börja om, 2 fortsätt, 3 till banorna.
-#|# Banorna skapas av en generator: en slingrande väg genom hela rutnätet
-#|# klipps i bitar, och bitarnas ändar blir prickarna. Alltså går varje bana
-#|# att lösa med alla rutor fyllda.
-#|
 #|F_RAW = ((235, 60, 60), (60, 120, 255), (60, 200, 80), (250, 220, 50), (255, 140, 30),
 #|         (60, 220, 230), (240, 90, 200), (150, 80, 230), (225, 225, 225))
 #|F_COL = [rgb(*c) for c in F_RAW]
 #|F_DIM = [rgb(c[0] // 4, c[1] // 4, c[2] // 4) for c in F_RAW]
 #|F_BG = [mix((10, 14, 30), (26, 12, 40), y / (H - 1)) for y in range(H)]
 #|F_GRID = rgb(50, 56, 90)
-#|NLEV = 25
+#|NLEV = 100
 #|F_SOL = [None]                  # senaste lösningen (används av testerna)
-#|
-#|
 #|class Rng:
 #|    """Egen enkel slump så att banorna blir likadana på Picon och datorn."""
 #|    def __init__(self, s):
 #|        self.s = (s * 7919 + 17) & 0xFFFFFF
-#|
 #|    def n(self, m):
 #|        self.s = (self.s * 1103 + 12345) & 0xFFFFFF
 #|        return (self.s >> 4) % m
-#|
-#|
 #|def f_size(i):
 #|    """Storlek och antal färger för bana i."""
 #|    if i < 5:
@@ -1762,9 +2105,15 @@ main()
 #|        return 6, 5 + i % 2
 #|    if i < 19:
 #|        return 7, 6 + i % 2
-#|    return 8, 7 + i % 2
-#|
-#|
+#|    if i < 25:
+#|        return 8, 7 + i % 2
+#|    if i < 40:
+#|        return 7, 5                     # färre färger = längre, krångligare linjer
+#|    if i < 60:
+#|        return 8, 6 + i % 2
+#|    if i < 80:
+#|        return 9, 8 + i % 2
+#|    return 9, 6 + i % 2
 #|def f_gen(w, k, rng):
 #|    n = w * w
 #|    while True:
@@ -1805,13 +2154,9 @@ main()
 #|        if ok:
 #|            F_SOL[0] = (path, lens)
 #|            return dots
-#|
-#|
 #|def f_level(i):
 #|    w, k = f_size(i)
 #|    return w, f_gen(w, k, Rng(i * 31 + 5))
-#|
-#|
 #|def play(lcd, keys):
 #|    mode = choose(lcd, keys, "FLODE", ("BANOR", "TIDSJAKT"), PINK, "Koppla ihop lika farger")
 #|    if mode is None:
@@ -1843,8 +2188,6 @@ main()
 #|            if sel >= NLEV - 1:
 #|                break
 #|            sel += 1
-#|
-#|
 #|def f_rush(lcd, keys):
 #|    """TIDSJAKT: lös så många banor du hinner. Varje lösning ger mer tid."""
 #|    rng = Rng(time.ticks_ms() & 0xFFFF)
@@ -1863,8 +2206,6 @@ main()
 #|        clock[0] += (12 if r == 2 else 8) * 30
 #|        if solved >= 5:
 #|            goal("flode", 2)
-#|
-#|
 #|def f_select(lcd, keys, done, sel):
 #|    stars = Stars(30)
 #|    keys.wait_release()
@@ -1874,9 +2215,9 @@ main()
 #|        unlocked = 0
 #|        while unlocked < NLEV and done[unlocked]:
 #|            unlocked += 1
-#|        if keys.repeat(K0, 10, 4):
+#|        if keys.repeat(K0, 10, 2):
 #|            sel = (sel - 1) % NLEV
-#|        if keys.repeat(K1, 10, 4):
+#|        if keys.repeat(K1, 10, 2):
 #|            sel = (sel + 1) % NLEV
 #|        if keys.pressed(K2) and sel <= unlocked:
 #|            keys.wait_release()
@@ -1887,11 +2228,13 @@ main()
 #|        stars.draw(lcd)
 #|        big(lcd, "FLODE", 12, 10, SHADOW, 3)
 #|        big(lcd, "FLODE", 10, 8, PINK, 3)
-#|        rtext(lcd, "%d/%d klara" % (sum(1 for d in done if d), NLEV), W - 8, 12, GRAY)
-#|        rtext(lcd, "0/1 valj 2 spela 3 ut", W - 8, 24, DIM)
-#|        for i in range(NLEV):
+#|        rtext(lcd, "%d/%d klara" % (sum(1 for d in done if d), NLEV), W - 8, 6, GRAY)
+#|        rtext(lcd, "SIDA %d/%d" % (sel // 25 + 1, (NLEV + 24) // 25), W - 8, 17, PINK)
+#|        rtext(lcd, "0/1 valj 2 spela 3 ut", W - 8, 28, DIM)
+#|        p0 = sel // 25 * 25
+#|        for i in range(p0, min(NLEV, p0 + 25)):
 #|            x = 14 + (i % 5) * 60
-#|            y = 40 + (i // 5) * 33
+#|            y = 40 + (i % 25 // 5) * 33
 #|            if i == sel:
 #|                lcd.fill_rect(x - 3, y - 3, 58, 30, WHITE)
 #|            c = YELLOW if done[i] == 2 else rgb(90, 200, 110) if done[i] else PINK if i <= unlocked else LINE
@@ -1910,8 +2253,6 @@ main()
 #|            ctext(lcd, txt, 217, WHITE)
 #|        lcd.show()
 #|        wait(t0)
-#|
-#|
 #|def f_draw(lcd, w, dots, paths, occ, cur, pen, ox, oy, s, t, hud):
 #|    gradient(lcd, F_BG)
 #|    for c in range(w * w):
@@ -1949,8 +2290,6 @@ main()
 #|    for d, (x, y) in enumerate(((10, 24), (W - 10, 24), (W - 10, H - 10), (10, H - 10))):
 #|        arrow(lcd, x, y, d, DIM, 4)
 #|    ctext(lcd, "2 knappar samtidigt = lyft pennan", 231, DIM)
-#|
-#|
 #|def f_play(lcd, keys, w, dots, title, clock):
 #|    """Spelar en bana. Svar: 1 klar, 2 perfekt, None avbruten, -1 tiden slut."""
 #|    n = w * w
@@ -1970,13 +2309,10 @@ main()
 #|    parts = Particles(60)
 #|    t = 0
 #|    keys.wait_release()
-#|
 #|    def complete(k):
 #|        p = paths[k]
 #|        return len(p) > 1 and p[0] in dot_at and p[-1] in dot_at and p[0] != p[-1]
-#|
 #|    def engage(c):
-#|        # Gå in på en prick eller ett linjeslut: pennan tar den färgen.
 #|        for k, p in enumerate(paths):
 #|            if len(p) > 1 and p[-1] == c:
 #|                return k
@@ -1985,12 +2321,9 @@ main()
 #|            paths[k] = [c]
 #|            return k
 #|        return -1
-#|
 #|    pen = engage(cur)
-#|
 #|    def pos(c):
 #|        return ox + (c % w) * s + s // 2, oy + (c // w) * s + s // 2
-#|
 #|    while True:
 #|        t0 = time.ticks_ms()
 #|        keys.update()
@@ -2013,7 +2346,6 @@ main()
 #|                pen = -1
 #|        held = sum(keys.now)
 #|        if held == 2 and sum(keys.prev) < 2:
-#|            # två knappar samtidigt: lyft/sänk pennan (ångra steget den första gav)
 #|            if snap and t - snap_t <= 5:
 #|                cur, pen, paths = snap
 #|            pen = -1 if pen >= 0 else engage(cur)
@@ -2084,8 +2416,6 @@ main()
 #|        lcd.show()
 #|        t += 1
 #|        wait(t0)
-#|
-#|
 #|def f_pause(lcd, keys):
 #|    keys.wait_release()
 #|    while True:
@@ -2109,12 +2439,6 @@ main()
 #|        lcd.show()
 #|        wait(t0)
 #@@ aventyr
-#|# AVENTYR: plattformsspel med 8 banor.
-#|#   0 vänster, 1 höger, 2 hoppa (håll = högre), 3 dash (krossar sprickor och monster)
-#|#   Ta mynt och de 3 ädelstenarna på varje bana. Flaggor = kontrollpunkter.
-#|#   Håll alla fyra: paus (2 fortsätt, 3 till banorna).
-#|# Banorna byggs av verktyg/gen_aventyr.py, som också kollar att allt går att nå.
-#|
 #|AV_LEVELS = (
 #|    ('ANGEN', 0, '0/1 spring  2 hoppa', (
 #|        '                                                                                                ',
@@ -2253,7 +2577,6 @@ main()
 #|        '##########                IIIIIIIILLLLLLLLLLLL########################LLLLLLLLLLLLLLLL##################################',
 #|    )),
 #|)
-#|
 #|TS = 16
 #|PW, PH = 10, 14
 #|AV_PAL = (   # himmel uppe, himmel nere, mark, mörk mark, gräs/topp, kullar, planka
@@ -2266,7 +2589,6 @@ main()
 #|    ((26, 26, 56), (92, 82, 124), (120, 120, 140), (80, 80, 100), (160, 160, 182), (50, 50, 82), (150, 120, 90)),
 #|    ((10, 10, 40), (84, 40, 124), (100, 80, 140), (70, 50, 100), (200, 150, 255), (40, 30, 82), (200, 150, 255)),
 #|)
-#|# Vilka tecken som är fasta block
 #|AV_SOLID = bytearray(128)
 #|for _c in "#BXcI":
 #|    AV_SOLID[ord(_c)] = 1
@@ -2283,14 +2605,10 @@ main()
 #|SPIKE = rgb(220, 220, 236)
 #|GEMC = rgb(60, 255, 210)
 #|TRUNK = rgb(96, 62, 30)
-#|
-#|
 #|def gem(fb, x, y, r, c):
 #|    tri(fb, x - r, y, x + r, y, x, y - r, c)
 #|    tri(fb, x - r, y, x + r, y, x, y + r + r // 2, c)
 #|    fb.line(x - r // 2, y - r // 2, x, y - r + 1, WHITE)
-#|
-#|
 #|class AvLevel:
 #|    def __init__(self, n):
 #|        name, pal, hint, rows = AV_LEVELS[n]
@@ -2324,18 +2642,13 @@ main()
 #|        for i in range(64):
 #|            a = i * 6.2832 / 64
 #|            self.hills[i] = 50 + int(22 * math.sin(a * 2 + pal) + 14 * math.sin(a * 5 + 1))
-#|
 #|    def at(self, tx, ty):
 #|        if tx < 0 or tx >= self.w:
 #|            return 66
 #|        if ty < 0 or ty >= 15:
 #|            return C_SP
 #|        return self.g[ty][tx]
-#|
-#|
 #|KEY = rgb(255, 0, 255)                  # genomskinlig färg i förritade brickor
-#|
-#|
 #|def av_cache(lv):
 #|    """Förritar brickorna (16x16) en gång per bana, så blir det en blit per bricka."""
 #|    out = []
@@ -2390,8 +2703,6 @@ main()
 #|            f.fill_rect(5, 0, 6, TS, TRUNK)
 #|        out.append(f)
 #|    return out
-#|
-#|
 #|@native
 #|def av_tiles(lcd, lv, cam, t, crum, flags):
 #|    c0 = cam // TS
@@ -2457,8 +2768,6 @@ main()
 #|                lcd.fill_rect(x + 10, y + 4, 2, 2, YELLOW)
 #|                if (t // 8) % 2:
 #|                    lcd.pixel(x + 8 + (t % 7) - 3, y - 18, YELLOW)
-#|
-#|
 #|def av_enemy(lcd, e, cam, t):
 #|    x, y = int(e[0]) - cam, int(e[1])
 #|    if x < -20 or x > W + 4:
@@ -2488,13 +2797,9 @@ main()
 #|        lcd.ellipse(x + 7, y + 7, 5, 5, rgb(110, 60, 160), True)
 #|        lcd.fill_rect(x + 4, y + 5, 2, 2, YELLOW)
 #|        lcd.fill_rect(x + 9, y + 5, 2, 2, YELLOW)
-#|
-#|
 #|def av_time(f):
 #|    s = f // 30
 #|    return "%d:%02d" % (s // 60, s % 60)
-#|
-#|
 #|def play(lcd, keys):
 #|    n = len(AV_LEVELS)
 #|    best = SCORES.get("av_time", [0] * n)
@@ -2525,11 +2830,8 @@ main()
 #|                goal("aventyr", 2)
 #|            if sel < n - 1:
 #|                sel += 1
-#|
-#|
 #|def av_select(lcd, keys, best, gems, sel):
 #|    n = len(AV_LEVELS)
-#|    stars = Stars(30)
 #|    t = 0
 #|    keys.wait_release()
 #|    while True:
@@ -2547,8 +2849,7 @@ main()
 #|            return sel
 #|        if keys.pressed(K3):
 #|            return None
-#|        gradient(lcd, theme_bg())
-#|        stars.draw(lcd)
+#|        theme_draw(lcd, t)
 #|        big(lcd, "AVENTYR", 12, 10, SHADOW, 3)
 #|        big(lcd, "AVENTYR", 10, 8, LIME, 3)
 #|        rtext(lcd, "0/1 valj", W - 8, 10, GRAY)
@@ -2580,20 +2881,14 @@ main()
 #|        lcd.show()
 #|        t += 1
 #|        wait(t0)
-#|
-#|
 #|class NoFx:
 #|    """Tomma effekter (används när spelet räknas utan skärm, t.ex. i tester)."""
 #|    def burst(self, *a):
 #|        pass
-#|
 #|    def add(self, *a):
 #|        pass
-#|
 #|    def hit(self, *a):
 #|        pass
-#|
-#|
 #|class Av:
 #|    """Allt som händer i en bana, utan att rita något."""
 #|    def __init__(self, lv, fx=None):
@@ -2618,7 +2913,6 @@ main()
 #|            for tx in range(lv.w):
 #|                if lv.g[ty][tx] == C_GEM:
 #|                    self.gempos.append(tx + ty * 1000)
-#|
 #|    def step(self, L, R, J, Jp, D):
 #|        """En bildruta. L/R/J = knappar nere, Jp/D = nyss tryckta (hopp, dash)."""
 #|        lv = self.lv
@@ -2682,7 +2976,6 @@ main()
 #|                ground = False
 #|                self.spring_up = False
 #|                parts.burst(px + 5, py + PH, WHITE, 5, 1.5, 8)
-#|        # --- flytta i x ---
 #|        nx = px + vx
 #|        if vx:
 #|            tx = int(nx + PW - 1) // TS if vx > 0 else int(nx) // TS
@@ -2697,7 +2990,6 @@ main()
 #|                    vx = 0.0
 #|                    self.dash = 0
 #|        px = nx
-#|        # --- flytta i y ---
 #|        ny = py + vy
 #|        was_ground = ground
 #|        ground = False
@@ -2736,7 +3028,6 @@ main()
 #|                    break
 #|        py = ny
 #|        self.px, self.py, self.vx, self.vy, self.ground = px, py, vx, vy, ground
-#|        # --- saker och faror ---
 #|        hurt = py > H + 8
 #|        for ty in range(int(py + 3) // TS, int(py + PH - 1) // TS + 1):
 #|            for tx in range(int(px + 1) // TS, int(px + PW - 2) // TS + 1):
@@ -2760,7 +3051,6 @@ main()
 #|                    self.won = True
 #|                elif c == C_SPK or c == C_LAVA:
 #|                    hurt = True
-#|        # --- monster ---
 #|        for e in lv.enemies:
 #|            if not e[4]:
 #|                continue
@@ -2792,7 +3082,6 @@ main()
 #|            shake.hit(6)
 #|            parts.burst(px + 5, min(py, H - 10) + 7, rgb(255, 90, 90), 24, 3.5, 24, 0.15)
 #|        self.crumble()
-#|
 #|    def crumble(self):
 #|        lv = self.lv
 #|        for k in list(self.crum.keys()):
@@ -2811,24 +3100,17 @@ main()
 #|                else:
 #|                    del self.gone[k]
 #|                    lv.g[k // 1000][k % 1000] = C_CR
-#|
-#|
 #|class AvFx:
 #|    def __init__(self):
 #|        self.p = Particles(70)
 #|        self.q = Popups()
 #|        self.s = Shake()
-#|
 #|    def burst(self, *a):
 #|        self.p.burst(*a)
-#|
 #|    def add(self, *a):
 #|        self.q.add(*a)
-#|
 #|    def hit(self, a):
 #|        self.s.hit(a)
-#|
-#|
 #|def av_run(lcd, keys, n):
 #|    lv = AvLevel(n)
 #|    gc.collect()
@@ -2837,7 +3119,6 @@ main()
 #|    cam = 0.0
 #|    t = 0
 #|    keys.wait_release()
-#|    # Bannamn
 #|    for f in range(40):
 #|        t0 = time.ticks_ms()
 #|        keys.update()
@@ -2863,7 +3144,6 @@ main()
 #|        a.step(L, R, now[K2], now[K2] and not prev[K2], now[K3] and not prev[K3])
 #|        if a.won:
 #|            return av_win(lcd, lv, cam, t, a, n)
-#|        # kamera
 #|        cam += (a.px - 140 - cam) * 0.25
 #|        mx = lv.w * TS - W
 #|        if cam < 0:
@@ -2872,7 +3152,6 @@ main()
 #|            cam = float(mx)
 #|        ox, oy = fx.s.offset()
 #|        c = int(cam) - ox
-#|        # --- rita ---
 #|        gradient(lcd, lv.bg)
 #|        hs = lv.hills
 #|        sc = c // 3
@@ -2903,8 +3182,6 @@ main()
 #|        lcd.show()
 #|        t += 1
 #|        wait(t0)
-#|
-#|
 #|def av_win(lcd, lv, cam, t, a, n):
 #|    c = int(cam)
 #|    frames, coins, gotgems, deaths, crum, flags = a.frames, a.coins, a.gotgems, a.deaths, a.crum, a.flags
@@ -2925,22 +3202,263 @@ main()
 #|        lcd.show()
 #|        wait(t0)
 #|    return frames, gotgems
+#@@ dino
+#|D_GROUND = 200
+#|D_X = 46
+#|D_SKIES = (   # dag, solnedgång, natt, gryning (himmel uppe, nere)
+#|    ((90, 170, 255), (200, 235, 255)),
+#|    ((90, 40, 120), (255, 150, 80)),
+#|    ((6, 6, 30), (40, 20, 70)),
+#|    ((120, 120, 200), (255, 200, 170)),
+#|)
+#|D_COL = rgb(120, 210, 120)
+#|D_DARK = rgb(60, 140, 70)
+#|CACT = rgb(50, 160, 70)
+#|CACT_D = rgb(30, 110, 50)
+#|D_HILL = bytearray(64)
+#|for _i in range(64):
+#|    D_HILL[_i] = 30 + int(16 * math.sin(_i * 0.4) + 9 * math.sin(_i * 1.1 + 2))
+#|def d_sky(a, b, f):
+#|    t0 = [D_SKIES[a][0][k] + (D_SKIES[b][0][k] - D_SKIES[a][0][k]) * f for k in range(3)]
+#|    t1 = [D_SKIES[a][1][k] + (D_SKIES[b][1][k] - D_SKIES[a][1][k]) * f for k in range(3)]
+#|    return [mix(t0, t1, y / (D_GROUND - 1)) for y in range(D_GROUND)]
+#|def draw_dino(fb, x, y, t, air, duck, shield):
+#|    c = D_COL
+#|    if shield:
+#|        fb.ellipse(x + 12, y + 10, 20, 18, SKY if (t // 3) % 2 else WHITE)
+#|    if duck:
+#|        fb.fill_rect(x, y + 10, 24, 10, c)
+#|        fb.fill_rect(x + 18, y + 6, 12, 8, c)
+#|        fb.fill_rect(x + 24, y + 8, 2, 2, BLACK)
+#|        k = (t // 2) % 2
+#|        fb.fill_rect(x + 4, y + 20, 3, 4 - k * 2, D_DARK)
+#|        fb.fill_rect(x + 14, y + 20, 3, 2 + k * 2, D_DARK)
+#|        return
+#|    fb.fill_rect(x + 10, y, 14, 9, c)                    # huvud
+#|    fb.fill_rect(x + 18, y + 2, 2, 2, BLACK)             # öga
+#|    fb.fill_rect(x + 18, y + 7, 6, 1, D_DARK)            # mun
+#|    fb.fill_rect(x + 2, y + 8, 14, 10, c)                # kropp
+#|    fb.fill_rect(x - 2, y + 8, 4, 5, c)                  # svans
+#|    fb.fill_rect(x + 16, y + 11, 3, 2, c)                # arm
+#|    if air:
+#|        fb.fill_rect(x + 4, y + 18, 3, 6, D_DARK)
+#|        fb.fill_rect(x + 11, y + 18, 3, 6, D_DARK)
+#|    else:
+#|        k = (t // 2) % 2
+#|        fb.fill_rect(x + 4, y + 18, 3, 6 if k else 3, D_DARK)
+#|        fb.fill_rect(x + 11, y + 18, 3, 3 if k else 6, D_DARK)
+#|def draw_cactus(fb, x, w, h):
+#|    top = D_GROUND - h
+#|    for sx in range(x, x + w, 10):
+#|        fb.fill_rect(sx + 2, top, 6, h, CACT)
+#|        fb.vline(sx + 3, top + 1, h - 2, CACT_D)
+#|        fb.fill_rect(sx - 1, top + h // 3, 3, 3, CACT)
+#|        fb.fill_rect(sx - 1, top + h // 3 - 6, 3, 6, CACT)
+#|        fb.fill_rect(sx + 8, top + h // 2, 3, 3, CACT)
+#|        fb.fill_rect(sx + 8, top + h // 2 - 5, 3, 5, CACT)
+#|def draw_bird(fb, x, y, t):
+#|    c = rgb(200, 70, 200)
+#|    fb.fill_rect(x + 4, y + 4, 16, 6, c)
+#|    fb.fill_rect(x, y + 5, 5, 3, AMBER)
+#|    fb.fill_rect(x + 5, y + 5, 2, 2, BLACK)
+#|    if (t // 4) % 2:
+#|        tri(fb, x + 8, y + 4, x + 16, y + 4, x + 12, y - 8, c)
+#|    else:
+#|        tri(fb, x + 8, y + 9, x + 16, y + 9, x + 12, y + 19, c)
+#|def play(lcd, keys):
+#|    dy = vy = 0.0                # höjd över marken och fart uppåt
+#|    jumps = 0
+#|    dist = 0.0
+#|    speed = 5.5
+#|    coins = 0
+#|    shield = False
+#|    obs = []                     # [x, typ, a, b]  typ 0 kaktus (bredd, höjd), 1 fågel (y)
+#|    items = []                   # [x, y, typ]  typ 0 mynt, 1 sköld
+#|    gap = 160
+#|    phase = 0
+#|    bg = d_sky(0, 0, 0)
+#|    trans = 0
+#|    parts = Particles(50)
+#|    pops = Popups()
+#|    shake = Shake()
+#|    pebbles = [[random.randint(0, W), random.randint(D_GROUND + 4, H - 4)] for _ in range(14)]
+#|    t = 0
+#|    started = False
+#|    keys.wait_release()
+#|    while True:
+#|        t0 = time.ticks_ms()
+#|        keys.update()
+#|        if keys.pause() and pause(lcd, keys):
+#|            return int(dist / 10) + coins * 10
+#|        jp = keys.pressed(K1) or keys.pressed(K2)
+#|        jh = keys.held(K1) or keys.held(K2)
+#|        duck = keys.held(K0) or keys.held(K3)
+#|        if not started:
+#|            started = jp
+#|        else:
+#|            if jp and (dy == 0 or jumps < 2):
+#|                vy = 9.5 if dy == 0 else 8.0
+#|                jumps = 1 if dy == 0 else 2
+#|                if jumps == 2:
+#|                    parts.burst(D_X + 10, D_GROUND - int(dy), WHITE, 6, 1.5, 8)
+#|            if dy > 0 or vy > 0:
+#|                dy += vy
+#|                vy -= 0.55 if jh and vy > 0 else 0.95
+#|                if duck:
+#|                    vy -= 1.6
+#|                if dy <= 0:
+#|                    dy = vy = 0.0
+#|                    jumps = 0
+#|                    parts.burst(D_X + 10, D_GROUND, rgb(200, 180, 140), 3, 1, 6)
+#|            speed = min(5.5 + dist / 1300, 14.0)
+#|            dist += speed
+#|            score = int(dist / 10) + coins * 10
+#|            p = int(dist / 10) // 400 % 4
+#|            if p != phase:
+#|                trans = 64
+#|                old, phase = phase, p
+#|            if trans:
+#|                trans -= 1
+#|                if trans % 8 == 0:
+#|                    bg = d_sky(old, phase, 1 - trans / 64)
+#|            for o in obs:
+#|                o[0] -= speed
+#|            for it in items:
+#|                it[0] -= speed
+#|            if obs and obs[0][0] < -40:
+#|                obs.pop(0)
+#|            items = [it for it in items if it[0] > -20]
+#|            if not obs or obs[-1][0] < W - gap:
+#|                sc = int(dist / 10)
+#|                r = random.random()
+#|                x = W + 20
+#|                if sc > 250 and r < 0.3:
+#|                    obs.append([x, 1, random.choice((D_GROUND - 22, D_GROUND - 30, D_GROUND - 30, D_GROUND - 58)), 0])
+#|                else:
+#|                    n = random.choice((1, 1, 2, 2, 3)) if sc > 100 else random.choice((1, 1, 2))
+#|                    h = random.randint(22, 32 + min(14, sc // 100))
+#|                    obs.append([x, 0, n * 10, h])
+#|                    if random.random() < 0.45:               # mynt i en båge över kaktusen
+#|                        for k in range(5):
+#|                            items.append([x - 30 + k * 20 + n * 5, D_GROUND - h - 18 - int(22 * math.sin(k * 0.78)), 0])
+#|                if random.random() < 0.03 and not shield:
+#|                    items.append([x + gap // 2, D_GROUND - 70, 1])
+#|                gap = random.randint(140, 240) + int(speed * 9)
+#|            if duck and dy == 0:
+#|                bx0, bx1, by0, by1 = D_X + 2, D_X + 28, D_GROUND - 14, D_GROUND
+#|            else:
+#|                bx0, bx1, by0, by1 = D_X + 4, D_X + 20, D_GROUND - 24 - dy, D_GROUND - dy
+#|            for it in items:
+#|                ix, iy = it[0], it[1]
+#|                if bx0 - 6 < ix < bx1 + 6 and by0 - 8 < iy < by1 + 8:
+#|                    if it[2] == 0:
+#|                        coins += 1
+#|                        parts.burst(ix, iy, YELLOW, 6, 1.6, 10)
+#|                        if coins >= 50:
+#|                            goal("dino", 1)
+#|                    else:
+#|                        shield = True
+#|                        pops.add(ix, iy - 10, "SKOLD!", SKY)
+#|                    it[0] = -99
+#|            for o in obs:
+#|                ox = o[0]
+#|                if o[1] == 0:
+#|                    x0, x1, y0, y1 = ox + 2, ox + o[2] - 1, D_GROUND - o[3] + 3, D_GROUND
+#|                else:
+#|                    x0, x1, y0, y1 = ox + 2, ox + 18, o[2], o[2] + 12
+#|                if x0 < bx1 and x1 > bx0 and y0 < by1 and y1 > by0:
+#|                    if shield:
+#|                        shield = False
+#|                        o[0] = -99
+#|                        shake.hit(6)
+#|                        parts.burst(ox + 8, y0 + 6, SKY, 16, 3, 16)
+#|                        continue
+#|                    shake.hit(10)
+#|                    for k in range(24):
+#|                        t1 = time.ticks_ms()
+#|                        d_draw(lcd, bg, phase, dist, obs, items, pebbles, parts, pops, shake,
+#|                               dy, t, False, False, coins, score)
+#|                        stext(lcd, "AJ!", 80, CORAL, 4)
+#|                        lcd.show()
+#|                        wait(t1)
+#|                    return score
+#|            if score >= 500:
+#|                goal("dino", 0)
+#|            if score >= 2000:
+#|                goal("dino", 2)
+#|            for p_ in pebbles:
+#|                p_[0] -= speed
+#|                if p_[0] < 0:
+#|                    p_[0] += W
+#|                    p_[1] = random.randint(D_GROUND + 4, H - 4)
+#|        d_draw(lcd, bg, phase, dist, obs, items, pebbles, parts, pops, shake, dy, t,
+#|               duck and dy == 0, dy > 0 or not started, coins, int(dist / 10) + coins * 10, shield)
+#|        if not started:
+#|            stext(lcd, "DINO", 50, LIME, 5)
+#|            if (t // 10) % 2 == 0:
+#|                ctext(lcd, "1/2 hoppa   0/3 ducka", 120, WHITE)
+#|        lcd.show()
+#|        t += 1
+#|        wait(t0)
+#|def d_draw(lcd, bg, phase, dist, obs, items, pebbles, parts, pops, shake, dy, t,
+#|           duck, air, coins, score, shield=False):
+#|    ox, oy = shake.offset()
+#|    gradient(lcd, bg, 0, D_GROUND)
+#|    d = int(dist)
+#|    if phase == 2:
+#|        for i in range(24):
+#|            lcd.pixel((i * 73 + 11) % W, (i * 37 + 5) % 120, WHITE)
+#|        lcd.ellipse(260, 46, 14, 14, rgb(250, 245, 210), True)
+#|        lcd.ellipse(253, 42, 12, 12, bg[42], True)
+#|    elif phase != 2:
+#|        sy = 50 if phase == 0 else 120
+#|        lcd.ellipse(260, sy, 18, 18, rgb(255, 230, 90) if phase != 1 else rgb(255, 150, 60), True)
+#|    for k in range(4):
+#|        cx = (k * 110 - d // 6) % (W + 80) - 40
+#|        cy = 30 + k * 17
+#|        cc = rgb(255, 255, 255) if phase != 2 else rgb(60, 60, 90)
+#|        lcd.ellipse(cx, cy, 22, 7, cc, True)
+#|        lcd.ellipse(cx + 12, cy - 4, 12, 6, cc, True)
+#|    hc = (rgb(120, 190, 120), rgb(110, 50, 90), rgb(30, 30, 60), rgb(150, 140, 190))[phase]
+#|    sc = d // 3
+#|    for i in range(0, W, 8):
+#|        h = D_HILL[((i + sc) // 8) % 64]
+#|        lcd.fill_rect(i, D_GROUND - h, 8, h, hc)
+#|    lcd.fill_rect(0, D_GROUND, W, H - D_GROUND, rgb(210, 180, 120) if phase != 2 else rgb(70, 60, 60))
+#|    lcd.hline(0, D_GROUND, W, rgb(120, 90, 50))
+#|    for p in pebbles:
+#|        lcd.fill_rect(int(p[0]), p[1], 3, 1, rgb(140, 110, 70))
+#|    for it in items:
+#|        x, y = int(it[0]) + ox, int(it[1]) + oy
+#|        if it[2] == 0:
+#|            w = int(5 * abs(math.sin(t * 0.15 + it[0] * 0.05)))
+#|            lcd.ellipse(x, y, w + 1, 6, YELLOW, True)
+#|        else:
+#|            lcd.ellipse(x, y, 9, 9, SKY)
+#|            star(lcd, x, y, 6, WHITE)
+#|    for o in obs:
+#|        if o[1] == 0:
+#|            draw_cactus(lcd, int(o[0]) + ox, o[2], o[3])
+#|        else:
+#|            draw_bird(lcd, int(o[0]) + ox, o[2] + oy, t)
+#|    y = D_GROUND - 24 - int(dy)
+#|    draw_dino(lcd, D_X + ox, y + oy, t, air, duck, shield)
+#|    parts.draw(lcd)
+#|    pops.draw(lcd)
+#|    big(lcd, str(score), W - 8 - len(str(score)) * 16, 8, WHITE, 2)
+#|    lcd.ellipse(14, 14, 5, 6, YELLOW, True)
+#|    lcd.text("%d" % coins, 24, 10, WHITE)
+#|    lcd.text("REKORD %d" % SCORES.get("dino", 0), 8, 26, WHITE if phase == 2 else BLACK)
 #@@ studs
-#|# STUDS: 0 vänster, 1 höger, 2 skjut.
-#|# Ju högre du kommer, desto fler världar: NATTEN, HIMLEN, RYMDEN, GALAXEN.
-#|# Power-ups: jetpack (flyger rakt upp), fjäderskor (6 superstudsar), stjärnor (+50).
 #|S_GRAV = 0.36
 #|S_JUMP = -8.6
 #|S_SPRING = -13.5
-#|# namn, höjd, himmel uppe, himmel nere, rutnät/dekor
 #|S_WORLDS = (
 #|    ("NATTEN", 0, (16, 20, 44), (36, 18, 56), (30, 32, 66)),
 #|    ("HIMLEN", 300, (60, 120, 220), (150, 200, 255), (130, 180, 245)),
 #|    ("RYMDEN", 800, (4, 4, 16), (20, 10, 40), (60, 60, 90)),
 #|    ("GALAXEN", 1500, (30, 0, 50), (90, 20, 90), (160, 80, 200)),
 #|)
-#|
-#|
 #|def play(lcd, keys):
 #|    parts = Particles(70)
 #|    pops = Popups()
@@ -2964,7 +3482,6 @@ main()
 #|    banner = 0
 #|    t = 0
 #|    keys.wait_release()
-#|
 #|    def spawn_until(limit):
 #|        nonlocal top
 #|        while top > limit:
@@ -2998,10 +3515,8 @@ main()
 #|            if height > 350 and random.random() < 0.04 + min(0.05, height / 40000):
 #|                d = random.choice((-1, 1))
 #|                bats.append([-20.0 if d > 0 else W + 20.0, top - 20, d * random.uniform(1.2, 2.2), 0.0])
-#|
 #|    def score():
 #|        return int((200 - best_y) / 10) + bonus
-#|
 #|    def die():
 #|        for k in range(30):
 #|            t1 = time.ticks_ms()
@@ -3010,7 +3525,6 @@ main()
 #|            lcd.show()
 #|            wait(t1)
 #|        return score()
-#|
 #|    spawn_until(cam - 40)
 #|    while True:
 #|        t0 = time.ticks_ms()
@@ -3042,7 +3556,6 @@ main()
 #|        py += vy
 #|        if squash > 0:
 #|            squash -= 1
-#|        # Landa på plattor (bara på väg ner)
 #|        if vy > 0:
 #|            for p in plats:
 #|                if p[4]:
@@ -3072,7 +3585,6 @@ main()
 #|                    p[3] = -p[3]
 #|            if p[4]:
 #|                p[1] += 4
-#|        # Power-ups
 #|        for it in items:
 #|            p = it[0]
 #|            ix, iy = p[0] + 22, p[1] - 12
@@ -3089,7 +3601,6 @@ main()
 #|                parts.burst(ix, iy, YELLOW, 12, 2.5, 14)
 #|                it[1] = -1
 #|        items = [it for it in items if it[1] >= 0 and not it[0][4] and it[0][1] < cam + H + 20]
-#|        # Monster
 #|        for m in monsters:
 #|            m[3] += 0.08
 #|            m[0] += m[2]
@@ -3134,7 +3645,6 @@ main()
 #|        bullets = [b for b in bullets if b[1] > cam - 20]
 #|        monsters = [m for m in monsters if m[1] < cam + H + 40]
 #|        bats = [b for b in bats if b[1] < cam + H + 40 and -40 < b[0] < W + 40]
-#|        # Kameran följer med uppåt
 #|        if py < cam + 100:
 #|            cam = py - 100
 #|        best_y = min(best_y, py)
@@ -3164,8 +3674,6 @@ main()
 #|        lcd.show()
 #|        t += 1
 #|        wait(t0)
-#|
-#|
 #|def draw_studs(lcd, bg, world, stars, plats, items, monsters, bats, bullets,
 #|               px, py, cam, face, squash, t, score, jet, shoes):
 #|    gradient(lcd, bg)
@@ -3247,7 +3755,6 @@ main()
 #|        lcd.fill_rect(bx + 2, by - 2, 2, 2, YELLOW)
 #|    for b in bullets:
 #|        lcd.ellipse(int(b[0]), int(b[1]) - c, 3, 3, AMBER, True)
-#|    # Hopparen
 #|    x, y = int(px), int(py) - c
 #|    sq = 3 if squash else 0
 #|    if jet:
@@ -3267,7 +3774,6 @@ main()
 #|    if shoes:
 #|        rtext(lcd, "SKOR x%d" % shoes, W - 6, 6, CORAL)
 #@@ pac
-#|# SPOKJAKT: pilarna i hörnen, 0 upp, 1 höger, 2 ner, 3 vänster.
 #|P_HALVES = (
 #|    (
 #|        "###########", "#o........#", "#.###.###.#", "#..........", "#.###.#.###",
@@ -3292,15 +3798,11 @@ main()
 #|    ),
 #|)
 #|P_MAZE = None
-#|
-#|
 #|def p_set_maze(n):
 #|    """Byter labyrint (spegla vänster halva)."""
 #|    global P_MAZE
 #|    h = P_HALVES[n % len(P_HALVES)]
 #|    P_MAZE = tuple(r + "".join(r[9 - i] for i in range(10)) for r in h)
-#|
-#|
 #|p_set_maze(0)
 #|MW, MH = 21, 21
 #|PT = 10
@@ -3311,8 +3813,6 @@ main()
 #|SCATTER = ((19, -2), (1, -2), (19, 22), (1, 22))
 #|HOUSE = (10, 9)
 #|EXIT = (10, 7)
-#|
-#|
 #|def p_walk(x, y):
 #|    """0 vägg, 1 gång, 2 spökhus, 3 dörr."""
 #|    if y < 0 or y >= MH:
@@ -3325,8 +3825,6 @@ main()
 #|    if ch == "-":
 #|        return 3
 #|    return 0
-#|
-#|
 #|def p_wall_rects():
 #|    """Förberäknar väggarnas rektanglar (fyllning + kantlinjer)."""
 #|    fills = []
@@ -3358,8 +3856,6 @@ main()
 #|                    else:
 #|                        edges.append((px, py, 2, PT))
 #|    return tuple(fills), tuple(edges)
-#|
-#|
 #|@native
 #|def p_draw_maze(fb, fills, edges, dots, blink, wall_c):
 #|    for r in fills:
@@ -3374,8 +3870,6 @@ main()
 #|            elif v == 2 and blink:
 #|                fb.ellipse(PX0 + x * PT + 5, PY0 + y * PT + 5, 3, 3, P_DOT, True)
 #|    fb.fill_rect(PX0 + 10 * PT, PY0 + 8 * PT + 4, PT, 2, rgb(255, 150, 210))
-#|
-#|
 #|def turn_back(e):
 #|    """Vänd mitt i en ruta utan att hoppa."""
 #|    if e.d < 0:
@@ -3386,19 +3880,14 @@ main()
 #|        e.y += dy
 #|        e.p = 1 - e.p
 #|    e.d = (e.d + 2) % 4
-#|
-#|
 #|class Ent:
 #|    def __init__(self, x, y, d, speed):
 #|        self.x, self.y, self.d, self.p, self.speed = x, y, d, 0.0, speed
-#|
 #|    def pos(self):
 #|        if self.d < 0:
 #|            return self.x, self.y
 #|        dx, dy = DIRS4[self.d]
 #|        return self.x + dx * self.p, self.y + dy * self.p
-#|
-#|
 #|def g_decide(g, ghosts, pac, face, chase):
 #|    """Spöket står mitt i en ruta och väljer nästa riktning."""
 #|    if g.state == "leave":
@@ -3442,16 +3931,12 @@ main()
 #|        if best is None or dist < best:
 #|            best = dist
 #|            g.d = d
-#|
-#|
 #|def p_cherry(fb, x, y):
 #|    fb.line(x, y - 6, x - 3, y, LIME)
 #|    fb.line(x, y - 6, x + 3, y + 1, LIME)
 #|    fb.ellipse(x - 3, y + 1, 3, 3, CORAL, True)
 #|    fb.ellipse(x + 3, y + 2, 3, 3, CORAL, True)
 #|    fb.pixel(x - 4, y, WHITE)
-#|
-#|
 #|def play(lcd, keys):
 #|    p_set_maze(0)
 #|    fills, edges = p_wall_rects()
@@ -3461,7 +3946,6 @@ main()
 #|    level = 1
 #|    pops = Popups()
 #|    parts = Particles(60)
-#|
 #|    def new_dots():
 #|        d = bytearray(MW * MH)
 #|        for y in range(MH):
@@ -3473,13 +3957,11 @@ main()
 #|                    d[y * MW + x] = 2
 #|        d[15 * MW + 10] = 0                                  # där Pac börjar
 #|        return d
-#|
 #|    dots = new_dots()
 #|    left = sum(1 for v in dots if v)
 #|    total = left
 #|    fruit_t = 0
 #|    fruits = 0
-#|
 #|    while True:                                              # ett liv
 #|        pac = Ent(10, 15, -1, min(0.13 + level * 0.006, 0.17))
 #|        face = 3
@@ -3510,7 +3992,6 @@ main()
 #|            if ready > 0:
 #|                ready -= 1
 #|            elif dead == 0:
-#|                # --- Pac ---
 #|                if pac.d >= 0 and want == (pac.d + 2) % 4:          # vänd direkt
 #|                    dx, dy = DIRS4[pac.d]
 #|                    pac.x = (pac.x + dx) % MW
@@ -3561,7 +4042,6 @@ main()
 #|                            pac.d = -1
 #|                            pac.p = 0.0
 #|                            break
-#|                # --- Läge: spridning eller jakt ---
 #|                mode_t += 1
 #|                cycle = mode_t % 900
 #|                chase = cycle >= 210
@@ -3574,7 +4054,6 @@ main()
 #|                    if fright_t == 0:
 #|                        for g in ghosts:
 #|                            g.fright = 0
-#|                # --- Spöken ---
 #|                for g in ghosts:
 #|                    if g.state == "house":
 #|                        if t >= g.release:
@@ -3605,7 +4084,6 @@ main()
 #|                            g.state = "leave"
 #|                            g.fright = 0
 #|                        g_decide(g, ghosts, pac, face, chase)
-#|                # --- Krockar ---
 #|                ppx, ppy = pac.pos()
 #|                for g in ghosts:
 #|                    if g.state in ("house", "eyes", "leave"):
@@ -3648,7 +4126,6 @@ main()
 #|                    if lives <= 0:
 #|                        return score
 #|                    break
-#|            # --- Rita ---
 #|            lcd.fill(P_BGC)
 #|            p_draw_maze(lcd, fills, edges, dots, (t // 8) % 2 == 0, wall)
 #|            if fruit_t:
@@ -3680,7 +4157,6 @@ main()
 #|                draw_pac(lcd, sx, sy, face, mouth)
 #|            parts.draw(lcd)
 #|            pops.draw(lcd)
-#|            # Poäng och liv
 #|            if score >= 5000:
 #|                goal("pac", 2)
 #|            big(lcd, str(score), PX0, 6, WHITE, 2)
@@ -3696,8 +4172,189 @@ main()
 #|            lcd.show()
 #|            t += 1
 #|            wait(t0)
+#@@ orm
+#|OC = 12
+#|OW, OH = 26, 17
+#|OX, OY = (W - OW * OC) // 2, 30
+#|O_LEVELS = (   # väggar som rektanglar (x, y, b, h) i rutor
+#|    (),
+#|    ((5, 4, 16, 1), (5, 12, 16, 1)),
+#|    ((8, 2, 1, 5), (8, 10, 1, 5), (17, 2, 1, 5), (17, 10, 1, 5)),
+#|    ((5, 3, 4, 3), (17, 3, 4, 3), (5, 11, 4, 3), (17, 11, 4, 3), (12, 6, 2, 1), (12, 10, 2, 1)),
+#|    ((0, 4, 10, 1), (16, 4, 10, 1), (0, 12, 10, 1), (16, 12, 10, 1), (12, 0, 2, 6), (12, 11, 2, 6)),
+#|)
+#|O_NAMES = ("ANGEN", "KORRIDOREN", "PELARNA", "RUMMEN", "LABYRINTEN")
+#|O_BG = [mix((6, 30, 20), (14, 50, 30), y / (H - 1)) for y in range(H)]
+#|O_GRID = rgb(24, 64, 40)
+#|O_WALL = rgb(120, 90, 60)
+#|O_BODY = (rgb(90, 220, 90), rgb(60, 180, 70))
+#|def o_walls(lv):
+#|    w = bytearray(OW * OH)
+#|    for x, y, b, h in O_LEVELS[lv % len(O_LEVELS)]:
+#|        for yy in range(y, y + h):
+#|            for xx in range(x, x + b):
+#|                w[yy * OW + xx] = 1
+#|    return w
+#|def play(lcd, keys):
+#|    level = 0
+#|    score = 0
+#|    eaten = 0
+#|    parts = Particles(60)
+#|    pops = Popups()
+#|    while True:
+#|        walls = o_walls(level)
+#|        snake = [(6, 8), (5, 8), (4, 8), (3, 8)]
+#|        d = 1
+#|        turns = []
+#|        grow = 0
+#|        apple = None
+#|        gold = None            # (ruta, tid kvar)
+#|        chili = None
+#|        turbo = 0
+#|        level_apples = 0
+#|        tick = 0
+#|        t = 0
+#|        def free():
+#|            while True:
+#|                c = (random.randint(0, OW - 1), random.randint(0, OH - 1))
+#|                if not walls[c[1] * OW + c[0]] and c not in snake and c != apple:
+#|                    return c
+#|        apple = free()
+#|        banner = 60
+#|        keys.wait_release()
+#|        while True:
+#|            t0 = time.ticks_ms()
+#|            keys.update()
+#|            if keys.pause() and pause(lcd, keys):
+#|                return score
+#|            for k in (K0, K1, K2, K3):
+#|                if keys.pressed(k) and len(turns) < 3:
+#|                    last = turns[-1] if turns else d
+#|                    if k != last and k != (last + 2) % 4:
+#|                        turns.append(k)
+#|            if banner:
+#|                banner -= 1
+#|            else:
+#|                tick += 1
+#|                delay = max(2, 7 - eaten // 6)
+#|                if turbo:
+#|                    turbo -= 1
+#|                    delay = max(1, delay - 2)
+#|                if tick >= delay:
+#|                    tick = 0
+#|                    if turns:
+#|                        d = turns.pop(0)
+#|                    dx, dy = DIRS4[d]
+#|                    hx, hy = snake[0][0] + dx, snake[0][1] + dy
+#|                    head = (hx, hy)
+#|                    body = snake if grow else snake[:-1]
+#|                    if not (0 <= hx < OW and 0 <= hy < OH) or walls[hy * OW + hx] or head in body:
+#|                        for k in range(30):
+#|                            t1 = time.ticks_ms()
+#|                            o_draw(lcd, walls, snake, apple, gold, chili, score, level, t, k % 4 < 2, turbo)
+#|                            stext(lcd, "KRASCH!", 100, CORAL, 4)
+#|                            lcd.show()
+#|                            wait(t1)
+#|                        return score
+#|                    snake.insert(0, head)
+#|                    if grow:
+#|                        grow -= 1
+#|                    else:
+#|                        snake.pop()
+#|                    px, py = OX + hx * OC + 6, OY + hy * OC + 6
+#|                    if head == apple:
+#|                        eaten += 1
+#|                        level_apples += 1
+#|                        grow += 1
+#|                        pts = 10 * (level + 1) * (2 if turbo else 1)
+#|                        score += pts
+#|                        parts.burst(px, py, CORAL, 10, 2, 12)
+#|                        pops.add(px, py - 8, "+%d" % pts, WHITE)
+#|                        apple = free()
+#|                        if gold is None and random.random() < 0.18:
+#|                            gold = [free(), 150]
+#|                        if chili is None and random.random() < 0.12:
+#|                            chili = [free(), 200]
+#|                        if eaten >= 20:
+#|                            goal("orm", 0)
+#|                        if eaten >= 60:
+#|                            goal("orm", 2)
+#|                    if gold and head == gold[0]:
+#|                        score += 100 * (level + 1)
+#|                        grow += 3
+#|                        parts.burst(px, py, YELLOW, 16, 2.5, 16)
+#|                        pops.add(px, py - 8, "GULD!", YELLOW)
+#|                        gold = None
+#|                    if chili and head == chili[0]:
+#|                        turbo = 150
+#|                        parts.burst(px, py, AMBER, 16, 2.5, 16)
+#|                        pops.add(px, py - 8, "TURBO! x2", AMBER)
+#|                        chili = None
+#|                    if level_apples >= 8:
+#|                        level += 1
+#|                        if level >= 3:
+#|                            goal("orm", 1)
+#|                        for k in range(30):
+#|                            t1 = time.ticks_ms()
+#|                            o_draw(lcd, walls, snake, None, None, None, score, level - 1, t, True, 0)
+#|                            stext(lcd, "NIVA %d!" % (level + 1), 100, LIME, 4)
+#|                            lcd.show()
+#|                            wait(t1)
+#|                        break
+#|                if gold:
+#|                    gold[1] -= 1
+#|                    if gold[1] <= 0:
+#|                        gold = None
+#|                if chili:
+#|                    chili[1] -= 1
+#|                    if chili[1] <= 0:
+#|                        chili = None
+#|            o_draw(lcd, walls, snake, apple, gold, chili, score, level, t, True, turbo)
+#|            parts.draw(lcd)
+#|            pops.draw(lcd)
+#|            if banner:
+#|                stext(lcd, "NIVA %d" % (level + 1), 92, LIME, 3)
+#|                ctext(lcd, O_NAMES[level % len(O_NAMES)], 126, WHITE, 2)
+#|            lcd.show()
+#|            t += 1
+#|            wait(t0)
+#|def o_draw(lcd, walls, snake, apple, gold, chili, score, level, t, show, turbo):
+#|    gradient(lcd, O_BG)
+#|    for x in range(OW + 1):
+#|        lcd.vline(OX + x * OC, OY, OH * OC, O_GRID)
+#|    for y in range(OH + 1):
+#|        lcd.hline(OX, OY + y * OC, OW * OC, O_GRID)
+#|    lcd.rect(OX - 2, OY - 2, OW * OC + 5, OH * OC + 5, O_WALL)
+#|    for x, y, b, h in O_LEVELS[level % len(O_LEVELS)]:
+#|        lcd.fill_rect(OX + x * OC, OY + y * OC, b * OC, h * OC, O_WALL)
+#|        lcd.rect(OX + x * OC, OY + y * OC, b * OC, h * OC, rgb(80, 60, 40))
+#|    if apple:
+#|        ax, ay = OX + apple[0] * OC + 6, OY + apple[1] * OC + 7
+#|        lcd.ellipse(ax, ay, 5, 5, CORAL, True)
+#|        lcd.fill_rect(ax, ay - 8, 2, 4, rgb(120, 70, 30))
+#|        lcd.fill_rect(ax + 2, ay - 7, 3, 2, LIME)
+#|    if gold and (gold[1] > 40 or (t // 3) % 2):
+#|        gx, gy = OX + gold[0][0] * OC + 6, OY + gold[0][1] * OC + 6
+#|        lcd.ellipse(gx, gy, 6, 6, YELLOW, True)
+#|        star(lcd, gx, gy, 4, WHITE)
+#|    if chili and (chili[1] > 40 or (t // 3) % 2):
+#|        cx, cy = OX + chili[0][0] * OC, OY + chili[0][1] * OC
+#|        lcd.fill_rect(cx + 2, cy + 4, 8, 5, rgb(240, 40, 30))
+#|        lcd.fill_rect(cx + 8, cy + 2, 3, 3, LIME)
+#|    if show:
+#|        n = len(snake)
+#|        for i in range(n - 1, -1, -1):
+#|            x, y = snake[i]
+#|            c = (AMBER if (i + t) % 2 else CORAL) if turbo else O_BODY[i % 2]
+#|            lcd.fill_rect(OX + x * OC + 1, OY + y * OC + 1, OC - 1, OC - 1, c)
+#|        hx, hy = OX + snake[0][0] * OC, OY + snake[0][1] * OC
+#|        lcd.fill_rect(hx + 3, hy + 3, 2, 2, BLACK)
+#|        lcd.fill_rect(hx + 8, hy + 3, 2, 2, BLACK)
+#|    big(lcd, str(score), OX, 6, WHITE, 2)
+#|    rtext(lcd, "NIVA %d  %s" % (level + 1, O_NAMES[level % len(O_NAMES)]), W - 30, 10, LIME)
+#|    arrow(lcd, 10, 12, 0, DIM)
+#|    arrow(lcd, W - 10, 12, 1, DIM)
 #@@ 2048
-#|# 2048: pilarna i hörnen, 0 upp, 1 höger, 2 ner, 3 vänster.
 #|G_N = 4
 #|G_S = 46
 #|G_GAP = 6
@@ -3706,15 +4363,12 @@ main()
 #|G_BOARD = rgb(60, 52, 80)
 #|G_EMPTY = rgb(80, 72, 104)
 #|G_BGC = [mix((30, 22, 46), (16, 26, 46), y / (H - 1)) for y in range(H)]
-#|
-#|
 #|def play(lcd, keys):
 #|    grid = [[0] * G_N for _ in range(G_N)]
 #|    score = 0
 #|    won = False
 #|    pops = Popups()
 #|    parts = Particles(80)
-#|
 #|    def spawn():
 #|        empty = [(r, c) for r in range(G_N) for c in range(G_N) if grid[r][c] == 0]
 #|        if empty:
@@ -3722,10 +4376,8 @@ main()
 #|            grid[r][c] = 1 if random.random() < 0.9 else 2
 #|            return (r, c)
 #|        return None
-#|
 #|    def cell_xy(r, c):
 #|        return G_X + G_GAP + c * (G_S + G_GAP), G_Y + G_GAP + r * (G_S + G_GAP)
-#|
 #|    def can_move():
 #|        for r in range(G_N):
 #|            for c in range(G_N):
@@ -3736,7 +4388,6 @@ main()
 #|                if r + 1 < G_N and grid[r][c] == grid[r + 1][c]:
 #|                    return True
 #|        return False
-#|
 #|    def move(d):
 #|        """d: 0 upp, 1 höger, 2 ner, 3 vänster. Returnerar (rörelser, sammanslagna, poäng)."""
 #|        nonlocal grid
@@ -3746,7 +4397,6 @@ main()
 #|        gain = 0
 #|        new = [[0] * G_N for _ in range(G_N)]
 #|        for i in range(G_N):
-#|            # gå längs raden/kolumnen från den sida brickorna glider mot
 #|            if dr:
 #|                line = [(r, i) for r in (range(G_N) if dr < 0 else range(G_N - 1, -1, -1))]
 #|            else:
@@ -3774,7 +4424,6 @@ main()
 #|        if changed:
 #|            grid = new
 #|        return (moves if changed else None), merged, gain
-#|
 #|    spawn()
 #|    spawn()
 #|    pop = []
@@ -3792,7 +4441,6 @@ main()
 #|        if d >= 0:
 #|            moves, merged, gain = move(d)
 #|            if moves:
-#|                # Glid-animation
 #|                for f in range(1, 6):
 #|                    p = f / 5
 #|                    draw_2048(lcd, None, score, t)
@@ -3834,8 +4482,6 @@ main()
 #|        lcd.show()
 #|        t += 1
 #|        wait(t0)
-#|
-#|
 #|def draw_2048(lcd, grid, score, t, pop=()):
 #|    gradient(lcd, G_BGC)
 #|    size = G_N * G_S + (G_N + 1) * G_GAP
@@ -3859,7 +4505,6 @@ main()
 #|                s = G_S + k * 6
 #|                if s > 8:
 #|                    g_tile(lcd, x + (G_S - s) // 2, y + (G_S - s) // 2, grid[r][c], s)
-#|    # Poäng till höger, pilar i hörnen
 #|    lcd.text("POANG", 8, 40, GRAY)
 #|    big(lcd, str(score), 8, 52, WHITE, 2 if score < 100 else 1)
 #|    lcd.text("REKORD", 8, 84, DIM)
@@ -3869,7 +4514,6 @@ main()
 #|    arrow(lcd, W - 12, H - 12, 2, AMBER)
 #|    arrow(lcd, 12, H - 12, 3, AMBER)
 #@@ invasion
-#|# INVASION: 0 vänster, 1 höger, 2 skjut, 3 superlaser.
 #|SPR_SQUID = (("...##...", "..####..", ".######.", "##.##.##", "########", "..#..#..", ".#.##.#.", "#.#..#.#"),
 #|             ("...##...", "..####..", ".######.", "##.##.##", "########", ".#.##.#.", "#......#", ".#....#."))
 #|SPR_CRAB = (("..#.....#..", "...#...#...", "..#######..", ".##.###.##.", "###########", "#.#######.#", "#.#.....#.#", "...##.##..."),
@@ -3880,8 +4524,6 @@ main()
 #|SPR_UFO = (".....######.....", "...##########...", "..############..", ".##.##.##.##.##.", "################", "..###..##..###..", "...#........#...")
 #|I_COLS = (PINK, TEAL, TEAL, LIME, LIME)
 #|I_POINTS = (30, 20, 20, 10, 10)
-#|
-#|
 #|def sprite(rows, col, s=2):
 #|    """Gör en liten bild (FrameBuffer) av en textmall. Svart = genomskinligt."""
 #|    w, h = len(rows[0]) * s, len(rows) * s
@@ -3892,8 +4534,6 @@ main()
 #|            if ch == "#":
 #|                fb.fill_rect(x * s, y * s, s, s, col)
 #|    return (fb, w, h, buf)
-#|
-#|
 #|def bunker():
 #|    b = bytearray(12 * 8)
 #|    for y in range(8):
@@ -3902,13 +4542,9 @@ main()
 #|            hole = y >= 5 and 3 <= x <= 8
 #|            b[y * 12 + x] = 0 if corner or hole else 1
 #|    return b
-#|
-#|
 #|BUNK_X = (34, 106, 178, 250)
 #|BUNK_Y = 176
 #|BUNK_C = rgb(90, 230, 120)
-#|
-#|
 #|@native
 #|def draw_bunkers(fb, bunks):
 #|    for i in range(4):
@@ -3918,8 +4554,6 @@ main()
 #|            for x in range(12):
 #|                if b[y * 12 + x]:
 #|                    fb.fill_rect(bx + x * 3, BUNK_Y + y * 3, 3, 3, BUNK_C)
-#|
-#|
 #|def bunker_hit(bunks, x, y):
 #|    """Träffar punkten ett skydd? Gör då ett hål och returnerar True."""
 #|    for i in range(4):
@@ -3935,8 +4569,6 @@ main()
 #|                            b[ny * 12 + nx] = 0
 #|                return True
 #|    return False
-#|
-#|
 #|def play(lcd, keys):
 #|    spr = [[sprite(SPR_SQUID[f], PINK) for f in (0, 1)],
 #|           [sprite(SPR_CRAB[f], TEAL) for f in (0, 1)],
@@ -3977,7 +4609,6 @@ main()
 #|            n_alive = sum(sum(1 for a in r if a) for r in alive)
 #|            if n_alive == 0:
 #|                break
-#|            # --- Spelaren ---
 #|            if keys.held(K0):
 #|                px -= 3.2
 #|            if keys.held(K1):
@@ -4000,7 +4631,6 @@ main()
 #|                power_t -= 1
 #|                if power_t == 0:
 #|                    power = ""
-#|            # --- Formationen ---
 #|            step_t += 1
 #|            interval = max(1, n_alive // 3)
 #|            if step_t >= interval:
@@ -4034,7 +4664,6 @@ main()
 #|                    c = random.choice(cols)
 #|                    r = max(r for r in range(5) if alive[r][c])
 #|                    aliens_shots.append([fx + c * 28 + 11, fy + r * 20 + 16])
-#|            # --- UFO ---
 #|            if ufo is None and random.random() < 0.003:
 #|                d = random.choice((-1, 1))
 #|                ufo = [-34.0 if d > 0 else W + 2.0, 1.6 * d]
@@ -4042,7 +4671,6 @@ main()
 #|                ufo[0] += ufo[1]
 #|                if ufo[0] < -40 or ufo[0] > W + 8:
 #|                    ufo = None
-#|            # --- Skott ---
 #|            for s in shots:
 #|                s[1] -= 7
 #|                s[0] += s[2]
@@ -4100,7 +4728,6 @@ main()
 #|                        power, power_t = d[2], 420
 #|                        pops.add(px, 190, "TRIPPEL" if d[2] == "T" else "SNABB", AMBER)
 #|            drops = [d for d in drops if d[1] < H]
-#|            # --- Superlaser ---
 #|            if beam > 0:
 #|                beam -= 1
 #|                for r in range(5):
@@ -4124,8 +4751,6 @@ main()
 #|                lcd.show()
 #|                time.sleep_ms(600)
 #|                return score
-#|
-#|            # --- Rita ---
 #|            ox, oy = shake.offset()
 #|            lcd.fill(BLACK)
 #|            stars.draw(lcd, 0.0, 0.3)
@@ -4179,7 +4804,6 @@ main()
 #|            goal("invasion", 0)
 #|        pops.add(W // 2, 130, "VAG KLAR +%d" % (100 * wave), LIME, 2)
 #@@ kross
-#|# KROSS: 0 vänster, 1 höger, 2/3 skjut iväg bollen (2 = laser).
 #|K_LEVELS = (
 #|    ("1111111111", "2222222222", "3333333333", "4444444444", "5555555555"),
 #|    ("..AAAAAA..", ".A111111A.", "A11XXXX11A", "A11111111A", ".AAAAAAAA."),
@@ -4198,8 +4822,6 @@ main()
 #|B_BW, B_BH = 30, 11
 #|B_TOP = 26
 #|PADY = 222
-#|
-#|
 #|def play(lcd, keys):
 #|    parts = Particles(140)
 #|    pops = Popups()
@@ -4233,13 +4855,11 @@ main()
 #|        banner = 50
 #|        t = 0
 #|        keys.wait_release()
-#|
 #|        def left():
 #|            for i in range(80):
 #|                if typ[i] and typ[i] != 8:
 #|                    return True
 #|            return False
-#|
 #|        def destroy(i, chain=0):
 #|            nonlocal score
 #|            tp = typ[i]
@@ -4263,7 +4883,6 @@ main()
 #|                            j = nr * 10 + nc
 #|                            if typ[j] and typ[j] != 8:
 #|                                destroy(j, chain + 1)
-#|
 #|        def hit_brick(x, y):
 #|            r = int((y - B_TOP) // 13)
 #|            c = int(x // 32)
@@ -4276,7 +4895,6 @@ main()
 #|                            destroy(i)
 #|                    return True
 #|            return False
-#|
 #|        while True:
 #|            t0 = time.ticks_ms()
 #|            keys.update()
@@ -4304,7 +4922,6 @@ main()
 #|                effects[k] -= 1
 #|                if effects[k] <= 0:
 #|                    del effects[k]
-#|            # --- Bollar ---
 #|            keep = []
 #|            for b in balls:
 #|                if attached:
@@ -4386,8 +5003,6 @@ main()
 #|                break
 #|            if banner > 0:
 #|                banner -= 1
-#|
-#|            # --- Rita ---
 #|            ox, oy = shake.offset()
 #|            gradient(lcd, bg)
 #|            for i in range(80):
@@ -4436,13 +5051,10 @@ main()
 #|            t += 1
 #|            wait(t0)
 #@@ kurvan
-#|# KURVAN: P1 0/3, P2 1/2.
 #|KY0 = 20
 #|KW, KH = W // 2, (H - KY0) // 2
 #|K_SPEED = 1.5
 #|K_TURN = 0.085
-#|
-#|
 #|def play(lcd, keys):
 #|    mode = choose(lcd, keys, "KURVAN", ("MOT DATORN", "MOT 2 DATORER", "2 SPELARE"), TEAL,
 #|                  "Sist kvar vinner rundan. Forst till 5!")
@@ -4456,12 +5068,10 @@ main()
 #|    points = [0] * n
 #|    target = 5
 #|    grid = bytearray(KW * KH)
-#|
 #|    def free(px, py):
 #|        if px < 1 or py < KY0 + 1 or px >= W - 1 or py >= H - 1:
 #|            return False
 #|        return grid[(int(py - KY0) >> 1) * KW + (int(px) >> 1)] == 0
-#|
 #|    def look(p, turn, steps=34):
 #|        x, y, a = p[0], p[1], p[2]
 #|        for i in range(steps):
@@ -4471,7 +5081,6 @@ main()
 #|            if not free(x, y):
 #|                return i
 #|        return steps
-#|
 #|    while True:                                    # en runda
 #|        for i in range(len(grid)):
 #|            grid[i] = 0
@@ -4531,7 +5140,6 @@ main()
 #|                    lcd.ellipse(int(p[0]), int(p[1]), 6, 6, WHITE, False)
 #|                    lcd.ellipse(int(p[0]), int(p[1]), 4, 4, K_COLS[i], True)
 #|                    continue
-#|                # Glapp i svansen ibland
 #|                p[4] -= 1
 #|                if p[4] <= 0:
 #|                    p[5] = 7
@@ -4574,19 +5182,497 @@ main()
 #|                goal("kurvan", 2)
 #|            return ("%s VANN!" % names[w], points[0], "kurvan" if mode != 2 else None,
 #|                    "Dina vunna rundor:", False, str)
-#|
-#|
 #|def k_field(lcd, names, points, n):
 #|    lcd.fill(BG)
 #|    lcd.rect(0, KY0, W, H - KY0, LINE)
 #|    lcd.rect(1, KY0 + 1, W - 2, H - KY0 - 2, LINE)
 #|    hud_k(lcd, names, points, n)
-#|
-#|
 #|def hud_k(lcd, names, points, n):
 #|    lcd.fill_rect(0, 0, W, KY0, BG)
 #|    for i in range(n):
 #|        x = 6 + i * 106
 #|        lcd.fill_rect(x, 6, 8, 8, K_COLS[i])
 #|        lcd.text("%s %d" % (names[i], points[i]), x + 12, 6, K_COLS[i])
+#@@ stapla
+#|SB_H = 14
+#|SB_BASE = 296
+#|SB_SKY = ((20, 30, 70), (120, 160, 230), (250, 170, 120), (60, 20, 90), (4, 4, 20))
+#|def play(lcd, keys):
+#|    return v_play(lcd, keys, "STAPLA", CORAL, ("Bygg ett sa hogt", "torn som mojligt.", "Valfri knapp slapper", "blocket."), "stapla", sb_game)
+#|def sb_col(i):
+#|    a = i * 0.25
+#|    return rgb(int(150 + 100 * math.sin(a)), int(150 + 100 * math.sin(a + 2.1)), int(150 + 100 * math.sin(a + 4.2)))
+#|def sb_bg(h):
+#|    k = min(len(SB_SKY) - 2, h // 15)
+#|    f = min(1.0, (h - k * 15) / 15)
+#|    top = lerp(SB_SKY[k + 1], SB_SKY[min(k + 2, len(SB_SKY) - 1)], f)
+#|    bot = lerp(SB_SKY[k], SB_SKY[k + 1], f)
+#|    return [mix(top, bot, y / (VH - 1)) for y in range(VH)]
+#|def sb_game(lcd, fb, keys, L, R):
+#|    stack = [[65.0, 110.0]]         # x, bredd för varje våning
+#|    cur_w = 110.0
+#|    x = 0.0
+#|    dirx = 1
+#|    speed = 2.4
+#|    perfect = 0
+#|    falling = []                    # bitar som ramlar: x, y, bredd, fart, färg
+#|    cam = 0.0
+#|    parts = Particles(60)
+#|    pops = Popups()
+#|    bg = sb_bg(0)
+#|    t = 0
+#|    keys.wait_release()
+#|    while True:
+#|        t0 = time.ticks_ms()
+#|        keys.update()
+#|        if keys.pause():
+#|            return None
+#|        n = len(stack)
+#|        x += dirx * speed
+#|        if x < -cur_w * 0.6 or x > VW - cur_w * 0.4:
+#|            dirx = -dirx
+#|        if any(keys.pressed(k) for k in (K0, K1, K2, K3)):
+#|            px, pw = stack[-1]
+#|            y = SB_BASE - n * SB_H
+#|            if abs(x - px) <= 3:
+#|                x = px
+#|                perfect += 1
+#|                parts.burst(x + cur_w / 2, y + cam, WHITE, 18, 3, 14)
+#|                if perfect >= 3:
+#|                    goal("stapla", 1)
+#|                    cur_w = min(150.0, cur_w + 8)
+#|                    pops.add(x + cur_w / 2, y + cam - 14, "PERFEKT x%d!" % perfect, YELLOW)
+#|                else:
+#|                    pops.add(x + cur_w / 2, y + cam - 14, "PERFEKT!", YELLOW)
+#|                stack.append([x, cur_w])
+#|            else:
+#|                perfect = 0
+#|                lo = max(x, px)
+#|                hi = min(x + cur_w, px + pw)
+#|                if hi <= lo:
+#|                    falling.append([x, y, cur_w, 0.0, sb_col(n)])
+#|                    for k in range(40):
+#|                        t1 = time.ticks_ms()
+#|                        for f in falling:
+#|                            f[3] += 0.6
+#|                            f[1] += f[3]
+#|                        sb_draw(fb, bg, stack, falling, None, 0, cam, n, t)
+#|                        stext(fb, "MISS!", 120, CORAL, 4, VW // 2)
+#|                        lcd.show()
+#|                        wait(t1)
+#|                    return n - 1
+#|                if x < lo:
+#|                    falling.append([x, y, lo - x, 0.0, sb_col(n)])
+#|                if x + cur_w > hi:
+#|                    falling.append([hi, y, x + cur_w - hi, 0.0, sb_col(n)])
+#|                cur_w = hi - lo
+#|                stack.append([lo, cur_w])
+#|            n = len(stack)
+#|            if n - 1 >= 15:
+#|                goal("stapla", 0)
+#|            if n - 1 >= 40:
+#|                goal("stapla", 2)
+#|            speed = min(7.0, 2.4 + (n - 1) * 0.12)
+#|            dirx = 1 if n % 2 else -1
+#|            x = -cur_w * 0.6 if dirx > 0 else VW - cur_w * 0.4
+#|            if (n - 1) % 3 == 0:
+#|                bg = sb_bg(n - 1)
+#|        target = max(0.0, (len(stack) - 12) * SB_H)
+#|        cam += (target - cam) * 0.15
+#|        for f in falling:
+#|            f[3] += 0.6
+#|            f[1] += f[3]
+#|        falling = [f for f in falling if f[1] + cam < VH + 20]
+#|        sb_draw(fb, bg, stack, falling, x, cur_w, cam, len(stack), t)
+#|        parts.draw(fb)
+#|        pops.draw(fb)
+#|        lcd.show()
+#|        t += 1
+#|        wait(t0)
+#|def sb_draw(fb, bg, stack, falling, x, cur_w, cam, n, t):
+#|    gradient(fb, bg, 0, VH)
+#|    c = int(cam)
+#|    for i in range(12):                                  # moln, sedan stjärnor högt upp
+#|        sx = (i * 83 + 7) % VW
+#|        sy = (i * 47 + c // 2) % VH
+#|        if n > 30:
+#|            fb.fill_rect(sx, sy, 2, 2, WHITE)
+#|        else:
+#|            fb.ellipse(sx, sy, 14, 4, rgb(230, 235, 250), True)
+#|    for i, (bx, bw) in enumerate(stack):
+#|        y = SB_BASE - i * SB_H + c
+#|        if y > VH or y < -SB_H:
+#|            continue
+#|        col = sb_col(i)
+#|        fb.fill_rect(int(bx), y, int(bw), SB_H, col)
+#|        fb.hline(int(bx), y, int(bw), WHITE)
+#|        fb.hline(int(bx), y + SB_H - 1, int(bw), BLACK)
+#|    if SB_BASE + SB_H + c < VH:
+#|        fb.fill_rect(0, SB_BASE + SB_H + c, VW, VH, rgb(60, 50, 40))
+#|    for f in falling:
+#|        fb.fill_rect(int(f[0]), int(f[1]) + c, int(f[2]), SB_H, f[4])
+#|    if x is not None:
+#|        y = SB_BASE - n * SB_H + c
+#|        fb.fill_rect(int(x), y, int(cur_w), SB_H, sb_col(n))
+#|        fb.hline(int(x), y, int(cur_w), WHITE)
+#|    s = str(n - 1)
+#|    big(fb, s, VW // 2 - len(s) * 12, 10, WHITE, 3)
+#|    fb.text("REKORD %d" % SCORES.get("stapla", 0), 4, 40, WHITE)
+#@@ rusa
+#|HZ = 96                     # horisonten
+#|FOC = 224.0                 # y = HZ + FOC / z  (z = avstånd)
+#|LANE_DX = 74.0
+#|RUN_PZ = 1.25               # spelarens avstånd
+#|RUN_PY = int(HZ + FOC / RUN_PZ)
+#|RUN_Z = [FOC / (y - HZ) for y in range(HZ + 1, VH)]
+#|RUN_HW = [int(110 / z) for z in RUN_Z]
+#|RUN_DIV = [int(LANE_DX / 2 / z) for z in RUN_Z]
+#|RUN_LW = [max(1, int(3 / z)) for z in RUN_Z]
+#|ROAD_A, ROAD_B = rgb(70, 62, 60), rgb(82, 74, 70)
+#|GRASS = ((rgb(30, 100, 50), rgb(40, 120, 60)), (rgb(200, 170, 90), rgb(215, 185, 100)),
+#|         (rgb(220, 230, 240), rgb(200, 215, 235)), (rgb(40, 30, 70), rgb(55, 40, 90)))
+#|SKIES = (((40, 20, 90), (255, 150, 90)), ((90, 160, 240), (250, 220, 150)),
+#|         ((120, 150, 200), (230, 240, 255)), ((5, 5, 25), (60, 30, 100)))
+#|RUMBLE_A = CORAL
+#|SKIN = rgb(255, 200, 150)
+#|@native
+#|def draw_road(fb, travel, ga, gb):
+#|    n = len(RUN_Z)
+#|    for i in range(n):
+#|        y = HZ + 1 + i
+#|        s = int((RUN_Z[i] + travel) * 1.4) & 1
+#|        hw = RUN_HW[i]
+#|        rw = hw // 7 + 1
+#|        fb.hline(0, y, VW, ga if s else gb)
+#|        fb.hline(120 - hw - rw, y, 2 * (hw + rw), RUMBLE_A if s else WHITE)
+#|        fb.hline(120 - hw, y, 2 * hw, ROAD_A if s else ROAD_B)
+#|        if s:
+#|            d = RUN_DIV[i]
+#|            lw = RUN_LW[i]
+#|            fb.hline(120 - d - lw // 2, y, lw, WHITE)
+#|            fb.hline(120 + d - lw // 2, y, lw, WHITE)
+#|def draw_sky(fb, sky, world, t):
+#|    gradient(fb, sky, 0, HZ + 1)
+#|    if world == 3:
+#|        for i in range(20):
+#|            fb.pixel((i * 73 + 11) % VW, (i * 37 + 5) % HZ, WHITE)
+#|        fb.ellipse(180, 40, 12, 12, rgb(250, 245, 210), True)
+#|    else:
+#|        fb.ellipse(120, HZ - 4, 26, 26, rgb(255, 230, 120), True)
+#|    mcol = (rgb(70, 40, 90), rgb(160, 120, 70), rgb(240, 245, 255), rgb(30, 20, 50))[world]
+#|    for x in range(0, VW, 4):
+#|        h = int(16 + 9 * math.sin(x * 0.045 + world) + 6 * math.sin(x * 0.13 + 1))
+#|        fb.fill_rect(x, HZ - h, 4, h + 1, mcol)
+#|def draw_obj(fb, o, t):
+#|    z = o[1]
+#|    if z < 0.7:
+#|        return
+#|    s = 1 / z
+#|    y = int(HZ + FOC / z)
+#|    x = int(120 + o[0] * LANE_DX / z)
+#|    if o[2] == 0:                       # hög spärr: byt fil
+#|        w = max(2, int(62 * s))
+#|        h = max(2, int(40 * s))
+#|        fb.fill_rect(x - w // 2, y - h, w, h, RUMBLE_A)
+#|        b = max(1, h // 5)
+#|        fb.fill_rect(x - w // 2, y - h + b, w, b, WHITE)
+#|        fb.fill_rect(x - w // 2, y - h + 3 * b, w, b, WHITE)
+#|    elif o[2] == 2:                     # lågt hinder: hoppa
+#|        w = max(2, int(62 * s))
+#|        h = max(1, int(12 * s))
+#|        fb.fill_rect(x - w // 2, y - h, w, h, AMBER)
+#|        fb.fill_rect(x - w // 2, y - h, w, max(1, h // 3), YELLOW)
+#|    else:                               # mynt
+#|        r = max(1, int(11 * s))
+#|        rx = max(1, int(r * abs(math.sin(t * 0.15 + z))))
+#|        cy = y - int(26 * s)
+#|        fb.ellipse(x, cy, rx, r, YELLOW, True)
+#|        if rx > 2:
+#|            fb.ellipse(x, cy, max(1, rx // 2), max(1, r // 2), AMBER, True)
+#|def draw_runner(fb, x, t, jh):
+#|    y = RUN_PY - jh
+#|    fb.ellipse(x, RUN_PY, 14 - jh // 6, 4, rgb(30, 30, 30), True)
+#|    leg = (t // 3) % 2 if jh == 0 else 2
+#|    fb.fill_rect(x - 6, y - 14, 4, 12 if leg == 1 else 8, rgb(50, 80, 200))
+#|    fb.fill_rect(x + 2, y - 14, 4, 8 if leg == 1 else 12, rgb(50, 80, 200))
+#|    fb.fill_rect(x - 7, y - 32, 14, 19, TEAL)
+#|    fb.fill_rect(x - 10, y - 30 + (3 if leg == 1 else 0), 3, 10, SKIN)
+#|    fb.fill_rect(x + 7, y - 30 + (0 if leg == 1 else 3), 3, 10, SKIN)
+#|    fb.ellipse(x, y - 39, 7, 7, SKIN, True)
+#|    fb.fill_rect(x - 7, y - 47, 14, 4, rgb(120, 60, 30))
+#|def play(lcd, keys):
+#|    return v_play(lcd, keys, "RUSA", AMBER, ("Spring sa langt du kan!", "Vanster/hoger: byt fil.", "Andra knapparna: hoppa", "over de laga hindren."), "rusa", run_game)
+#|def run_game(lcd, fb, keys, L, R):
+#|    J = [k for k in (K0, K1, K2, K3) if k != L and k != R]
+#|    lane = 0
+#|    px = 120.0
+#|    obs = []          # [fil, z, typ, passerad]  typ 0 spärr, 1 mynt, 2 lågt hinder
+#|    dist = 0.0
+#|    coins = 0
+#|    jump = 0          # bildrutor kvar av hoppet
+#|    next_row = 3.0
+#|    world = -1
+#|    t = 0
+#|    parts = Particles(40)
+#|    keys.wait_release()
+#|    while True:
+#|        t0 = time.ticks_ms()
+#|        keys.update()
+#|        if keys.pause():
+#|            return None
+#|        if keys.pressed(L):
+#|            lane = max(-1, lane - 1)
+#|        if keys.pressed(R):
+#|            lane = min(1, lane + 1)
+#|        if jump == 0 and any(keys.pressed(k) for k in J):
+#|            jump = 18
+#|        if jump:
+#|            jump -= 1
+#|        jh = int(46 * math.sin(math.pi * jump / 18)) if jump else 0
+#|        px += (120 + lane * LANE_DX / RUN_PZ - px) * 0.45
+#|        speed = min(0.13 + dist * 0.0008, 0.42)
+#|        dist += speed
+#|        w = int(dist * 10) // 800 % 4
+#|        if w != world:
+#|            world = w
+#|            sky = [mix(SKIES[w][0], SKIES[w][1], y / HZ) for y in range(HZ + 1)]
+#|        next_row -= speed
+#|        if next_row <= 0:
+#|            next_row = random.uniform(3.6, 6.0)
+#|            lanes = [-1, 0, 1]
+#|            for _ in range(random.choice((1, 1, 2))):
+#|                kind = 2 if dist > 30 and random.random() < 0.4 else 0
+#|                obs.append([lanes.pop(random.randint(0, len(lanes) - 1)), 22.0, kind, False])
+#|            if random.random() < 0.75:
+#|                ln = random.choice(lanes)
+#|                for k in range(random.choice((1, 3, 4))):
+#|                    obs.append([ln, 22.0 + k * 1.2, 1, False])
+#|        crashed = False
+#|        for o in obs:
+#|            o[1] -= speed
+#|            if not o[3] and o[1] <= RUN_PZ:
+#|                o[3] = True
+#|                if o[0] == lane:
+#|                    if o[2] == 0 or (o[2] == 2 and jh < 12):
+#|                        crashed = True
+#|                    elif o[2] == 1:
+#|                        coins += 1
+#|                        o[1] = -1
+#|                        parts.burst(px, RUN_PY - 30 - jh, YELLOW, 6, 2, 10)
+#|                        if coins >= 30:
+#|                            goal("rusa", 1)
+#|        obs = [o for o in obs if o[1] > 0.6]
+#|        score = int(dist * 10) + coins * 25
+#|        if score >= 1000:
+#|            goal("rusa", 0)
+#|        if score >= 3000:
+#|            goal("rusa", 2)
+#|        draw_sky(fb, sky, world, t)
+#|        draw_road(fb, dist, GRASS[world][0], GRASS[world][1])
+#|        obs.sort(key=lambda o: -o[1])
+#|        for o in obs:
+#|            if o[1] > RUN_PZ:
+#|                draw_obj(fb, o, t)
+#|        draw_runner(fb, int(px), t, jh)
+#|        for o in obs:
+#|            if o[1] <= RUN_PZ:
+#|                draw_obj(fb, o, t)
+#|        parts.draw(fb)
+#|        big(fb, str(score), 6, 6, WHITE, 2)
+#|        fb.ellipse(VW - 40, 13, 6, 6, YELLOW, True)
+#|        fb.text("%d" % coins, VW - 30, 9, WHITE)
+#|        if t < 70 and (t // 10) % 2 == 0:
+#|            ctext(fb, "%d <      > %d" % (L, R), 150, WHITE, 2, VW // 2)
+#|            ctext(fb, "hoppa: %d / %d" % (J[0], J[1]), 176, YELLOW, 1, VW // 2)
+#|        lcd.show()
+#|        if crashed:
+#|            for k in range(6):
+#|                fb.rect(0, 0, VW, VH, CORAL if k % 2 == 0 else WHITE)
+#|                fb.rect(1, 1, VW - 2, VH - 2, CORAL if k % 2 == 0 else WHITE)
+#|                lcd.show()
+#|                time.sleep_ms(80)
+#|            return score
+#|        t += 1
+#|        wait(t0)
+#@@ anfall
+#|SHIP_Y = 292
+#|def play(lcd, keys):
+#|    return v_play(lcd, keys, "ANFALL", LIME, ("Skjut ner allt som", "kommer! Lila skepp", "tal tre skott och kan", "tappa trippelskott."), "anfall", sp_game)
+#|def draw_ship(fb, x, t, triple):
+#|    fb.fill_rect(x - 2, SHIP_Y - 14, 4, 18, WHITE)
+#|    fb.fill_rect(x - 6, SHIP_Y - 4, 12, 6, SKY)
+#|    fb.fill_rect(x - 12, SHIP_Y, 24, 4, SKY)
+#|    fb.fill_rect(x - 12, SHIP_Y - 4, 3, 8, AMBER if triple else rgb(50, 80, 200))
+#|    fb.fill_rect(x + 9, SHIP_Y - 4, 3, 8, AMBER if triple else rgb(50, 80, 200))
+#|    fb.fill_rect(x - 1, SHIP_Y - 8, 2, 3, CORAL)
+#|    fl = 4 + (t % 3) * 2
+#|    fb.fill_rect(x - 3, SHIP_Y + 4, 6, fl, AMBER)
+#|    fb.fill_rect(x - 1, SHIP_Y + 4, 2, fl + 3, YELLOW)
+#|def draw_alien(fb, e, t):
+#|    x, y = int(e[0]), int(e[1])
+#|    if e[4] == 0:
+#|        fb.fill_rect(x - 8, y - 5, 16, 9, LIME)
+#|        fb.fill_rect(x - 5, y - 2, 3, 3, BG)
+#|        fb.fill_rect(x + 2, y - 2, 3, 3, BG)
+#|        fb.fill_rect(x - 6, y - 8, 2, 3, LIME)
+#|        fb.fill_rect(x + 4, y - 8, 2, 3, LIME)
+#|        k = 0 if (t // 8) % 2 else 3
+#|        fb.fill_rect(x - 8 + k, y + 4, 3, 4, LIME)
+#|        fb.fill_rect(x + 5 - k, y + 4, 3, 4, LIME)
+#|    elif e[4] == 1:
+#|        fb.ellipse(x, y, 14, 9, VIOLET, True)
+#|        fb.ellipse(x, y - 2, 5, 5, WHITE, True)
+#|        fb.fill_rect(x - 1, y - 3, 3, 3, BG)
+#|        for i in range(e[3]):
+#|            fb.fill_rect(x - 8 + i * 6, y + 11, 4, 2, CORAL)
+#|    else:                                   # meteor
+#|        fb.ellipse(x, y, 9, 9, rgb(140, 110, 90), True)
+#|        fb.ellipse(x - 3, y - 2, 3, 3, rgb(100, 80, 60), True)
+#|def sp_game(lcd, fb, keys, L, R):
+#|    B = [k for k in (K0, K1, K2, K3) if k != L and k != R]
+#|    x = 120.0
+#|    bullets = []
+#|    enemies = []      # [x, y, fas, liv, typ]  typ 0 grön, 1 lila, 2 meteor
+#|    shots = []
+#|    drops = []        # [x, y]  trippelskott
+#|    stars = Stars(40, VW, VH)
+#|    parts = Particles(80)
+#|    pops = Popups()
+#|    lives = 3
+#|    inv = 60
+#|    score = 0
+#|    purple = 0
+#|    triple = 0
+#|    bombs = 1
+#|    next_bomb = 1000
+#|    spawn = 30
+#|    t = 0
+#|    keys.wait_release()
+#|    while True:
+#|        t0 = time.ticks_ms()
+#|        keys.update()
+#|        if keys.pause():
+#|            return None
+#|        if keys.held(L):
+#|            x -= 5
+#|        if keys.held(R):
+#|            x += 5
+#|        x = max(14, min(VW - 14, x))
+#|        if bombs and any(keys.pressed(k) for k in B):
+#|            bombs -= 1
+#|            for e in enemies:
+#|                parts.burst(e[0], e[1], AMBER, 8, 3, 14)
+#|                score += 10
+#|            enemies = []
+#|            shots = []
+#|            for k in range(6):
+#|                fb.fill(WHITE if k % 2 == 0 else BG)
+#|                lcd.show()
+#|                time.sleep_ms(30)
+#|        if t % 6 == 0:
+#|            bullets.append([x, SHIP_Y - 16, 0])
+#|            if triple:
+#|                bullets.append([x - 8, SHIP_Y - 10, -1.5])
+#|                bullets.append([x + 8, SHIP_Y - 10, 1.5])
+#|        if triple:
+#|            triple -= 1
+#|        spawn -= 1
+#|        if spawn <= 0:
+#|            spawn = max(10, 40 - score // 60)
+#|            r = random.random()
+#|            kind = 1 if r < 0.18 else 2 if r < 0.3 and score > 300 else 0
+#|            enemies.append([random.uniform(20, VW - 20), -14, random.uniform(0, 6.3),
+#|                            3 if kind == 1 else 2 if kind == 2 else 1, kind])
+#|        fall = min(1.2 + score / 2500, 3.4)
+#|        for b in bullets:
+#|            b[1] -= 10
+#|            b[0] += b[2]
+#|        bullets = [b for b in bullets if b[1] > -10]
+#|        for e in enemies:
+#|            e[1] += fall * (0.7 if e[4] == 1 else 1.4 if e[4] == 2 else 1.0)
+#|            if e[4] != 2:
+#|                e[0] += math.sin(e[1] * 0.04 + e[2]) * 1.6
+#|            e[0] = max(14, min(VW - 14, e[0]))
+#|            if e[4] != 2 and random.random() < (0.012 if e[4] else 0.005):
+#|                shots.append([e[0], e[1] + 10])
+#|        for s in shots:
+#|            s[1] += 4.5
+#|        shots = [s for s in shots if s[1] < VH + 5]
+#|        for d in drops:
+#|            d[1] += 2
+#|            if abs(d[0] - x) < 14 and abs(d[1] - SHIP_Y) < 14:
+#|                triple = 300
+#|                d[1] = VH + 50
+#|                pops.add(x, SHIP_Y - 30, "TRIPPEL!", AMBER)
+#|        drops = [d for d in drops if d[1] < VH + 10]
+#|        for b in bullets:
+#|            for e in enemies:
+#|                if e[3] > 0 and abs(b[0] - e[0]) < (14 if e[4] == 1 else 10) and abs(b[1] - e[1]) < 10:
+#|                    e[3] -= 1
+#|                    b[1] = -100
+#|                    if e[3] <= 0:
+#|                        score += (10, 50, 20)[e[4]]
+#|                        parts.burst(e[0], e[1], (LIME, VIOLET, rgb(140, 110, 90))[e[4]], 10, 2.5, 14)
+#|                        if e[4] == 1:
+#|                            purple += 1
+#|                            if purple >= 10:
+#|                                goal("anfall", 1)
+#|                            if random.random() < 0.4:
+#|                                drops.append([e[0], e[1]])
+#|                    break
+#|        enemies = [e for e in enemies if e[3] > 0 and e[1] < VH + 20]
+#|        if score >= next_bomb:
+#|            next_bomb += 1000
+#|            bombs += 1
+#|            pops.add(VW // 2, 60, "+1 BOMB", CORAL)
+#|        if score >= 500:
+#|            goal("anfall", 0)
+#|        if score >= 2000:
+#|            goal("anfall", 2)
+#|        if inv > 0:
+#|            inv -= 1
+#|        else:
+#|            hit = False
+#|            for e in enemies:
+#|                if abs(e[0] - x) < 16 and abs(e[1] - SHIP_Y) < 12:
+#|                    e[3] = 0
+#|                    hit = True
+#|            for s in shots:
+#|                if abs(s[0] - x) < 10 and SHIP_Y - 14 < s[1] < SHIP_Y + 6:
+#|                    s[1] = VH + 50
+#|                    hit = True
+#|            if hit:
+#|                lives -= 1
+#|                inv = 60
+#|                parts.burst(x, SHIP_Y, AMBER, 20, 3, 18)
+#|                if lives <= 0:
+#|                    for _ in range(25):
+#|                        t1 = time.ticks_ms()
+#|                        fb.fill(BG)
+#|                        parts.draw(fb)
+#|                        lcd.show()
+#|                        wait(t1)
+#|                    return score
+#|        fb.fill(BG)
+#|        stars.draw(fb, 0.0, 1.5)
+#|        for e in enemies:
+#|            draw_alien(fb, e, t)
+#|        for d in drops:
+#|            fb.ellipse(int(d[0]), int(d[1]), 7, 7, AMBER, True)
+#|            fb.text("3", int(d[0]) - 3, int(d[1]) - 3, BG)
+#|        for b in bullets:
+#|            fb.fill_rect(int(b[0]) - 1, int(b[1]), 2, 7, YELLOW)
+#|        for s in shots:
+#|            fb.fill_rect(int(s[0]) - 2, int(s[1]), 4, 4, CORAL)
+#|        parts.draw(fb)
+#|        pops.draw(fb)
+#|        if inv == 0 or (t // 4) % 2 == 0:
+#|            draw_ship(fb, int(x), t, triple)
+#|        big(fb, str(score), 6, 6, WHITE, 2)
+#|        for i in range(lives):
+#|            fb.fill_rect(VW - 16 - i * 14, 8, 10, 8, SKY)
+#|        fb.text("BOMB %d (%d/%d)" % (bombs, B[0], B[1]), 6, 26, CORAL if bombs else DIM)
+#|        lcd.show()
+#|        t += 1
+#|        wait(t0)
 #@@ slut

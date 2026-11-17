@@ -128,9 +128,9 @@ def l_select(lcd, keys, best, sel):
         unlocked = 0
         while unlocked < len(LEVELS) and best[unlocked]:
             unlocked += 1
-        if keys.repeat(K0, 10, 4):
+        if keys.repeat(K0, 10, 2):
             sel = (sel - 1) % len(LEVELS)
-        if keys.repeat(K1, 10, 4):
+        if keys.repeat(K1, 10, 2):
             sel = (sel + 1) % len(LEVELS)
         if keys.pressed(K2) and sel <= unlocked:
             keys.wait_release()
@@ -142,11 +142,13 @@ def l_select(lcd, keys, best, sel):
         big(lcd, "LADOR", 12, 10, SHADOW, 3)
         big(lcd, "LADOR", 10, 8, AMBER, 3)
         done = sum(1 for b in best if b)
-        rtext(lcd, "%d/%d klara" % (done, len(LEVELS)), W - 8, 12, GRAY)
-        rtext(lcd, "0/1 valj 2 spela 3 ut", W - 8, 24, DIM)
-        for i in range(len(LEVELS)):
+        rtext(lcd, "%d/%d klara" % (done, len(LEVELS)), W - 8, 6, GRAY)
+        rtext(lcd, "SIDA %d/%d" % (sel // 20 + 1, (len(LEVELS) + 19) // 20), W - 8, 17, AMBER)
+        rtext(lcd, "0/1 valj 2 spela 3 ut", W - 8, 28, DIM)
+        p0 = sel // 20 * 20
+        for i in range(p0, min(len(LEVELS), p0 + 20)):
             x = 14 + (i % 5) * 60
-            y = 42 + (i // 5) * 40
+            y = 42 + (i % 20 // 5) * 40
             if i == sel:
                 lcd.fill_rect(x - 3, y - 3, 58, 36, WHITE)
             if best[i]:

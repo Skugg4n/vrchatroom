@@ -13,7 +13,7 @@ F_COL = [rgb(*c) for c in F_RAW]
 F_DIM = [rgb(c[0] // 4, c[1] // 4, c[2] // 4) for c in F_RAW]
 F_BG = [mix((10, 14, 30), (26, 12, 40), y / (H - 1)) for y in range(H)]
 F_GRID = rgb(50, 56, 90)
-NLEV = 25
+NLEV = 100
 F_SOL = [None]                  # senaste lösningen (används av testerna)
 
 
@@ -35,7 +35,15 @@ def f_size(i):
         return 6, 5 + i % 2
     if i < 19:
         return 7, 6 + i % 2
-    return 8, 7 + i % 2
+    if i < 25:
+        return 8, 7 + i % 2
+    if i < 40:
+        return 7, 5                     # färre färger = längre, krångligare linjer
+    if i < 60:
+        return 8, 6 + i % 2
+    if i < 80:
+        return 9, 8 + i % 2
+    return 9, 6 + i % 2
 
 
 def f_gen(w, k, rng):
@@ -147,9 +155,9 @@ def f_select(lcd, keys, done, sel):
         unlocked = 0
         while unlocked < NLEV and done[unlocked]:
             unlocked += 1
-        if keys.repeat(K0, 10, 4):
+        if keys.repeat(K0, 10, 2):
             sel = (sel - 1) % NLEV
-        if keys.repeat(K1, 10, 4):
+        if keys.repeat(K1, 10, 2):
             sel = (sel + 1) % NLEV
         if keys.pressed(K2) and sel <= unlocked:
             keys.wait_release()
@@ -160,11 +168,13 @@ def f_select(lcd, keys, done, sel):
         stars.draw(lcd)
         big(lcd, "FLODE", 12, 10, SHADOW, 3)
         big(lcd, "FLODE", 10, 8, PINK, 3)
-        rtext(lcd, "%d/%d klara" % (sum(1 for d in done if d), NLEV), W - 8, 12, GRAY)
-        rtext(lcd, "0/1 valj 2 spela 3 ut", W - 8, 24, DIM)
-        for i in range(NLEV):
+        rtext(lcd, "%d/%d klara" % (sum(1 for d in done if d), NLEV), W - 8, 6, GRAY)
+        rtext(lcd, "SIDA %d/%d" % (sel // 25 + 1, (NLEV + 24) // 25), W - 8, 17, PINK)
+        rtext(lcd, "0/1 valj 2 spela 3 ut", W - 8, 28, DIM)
+        p0 = sel // 25 * 25
+        for i in range(p0, min(NLEV, p0 + 25)):
             x = 14 + (i % 5) * 60
-            y = 40 + (i // 5) * 33
+            y = 40 + (i % 25 // 5) * 33
             if i == sel:
                 lcd.fill_rect(x - 3, y - 3, 58, 30, WHITE)
             c = YELLOW if done[i] == 2 else rgb(90, 200, 110) if done[i] else PINK if i <= unlocked else LINE
