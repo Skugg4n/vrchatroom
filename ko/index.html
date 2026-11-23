@@ -24,9 +24,7 @@
     width: 100vw;
     height: 100vh;
     touch-action: none;
-    cursor: grab;
   }
-  canvas.grabbing { cursor: grabbing; }
   .hud {
     position: fixed;
     top: 16px;
@@ -59,12 +57,12 @@
 <canvas id="c"></canvas>
 <div class="hud">
   <h1>Kossan Rosa</h1>
-  <p>Dra i kon och släpp. Hon ställer sig upp igen.</p>
+  <p>Dra i vad du vill: ben, knän, huvud, svans eller kropp. Släpp, så reser hon sig.</p>
 </div>
 <div class="version" id="version"></div>
 
 <script>
-const VERSION = "v1.0.0";
+const VERSION = "v1.1.0";
 document.getElementById("version").textContent = VERSION;
 
 const canvas = document.getElementById("c");
@@ -95,95 +93,269 @@ function buildScenery() {
   }
 }
 
-// ---------- Cow body (rigid body, y axis points down) ----------
-const G = 2200;              // gravity px/s^2
-const MASS = 1;
-const INERTIA = MASS * (170 * 170 + 110 * 110) / 12;
+// =====================================================================
+// Ragdoll model (position based dynamics / Verlet).
+// Every joint is a particle. Bones are distance constraints, joints have
+// angle limits, and "muscles" are a pose-matching pass that pulls the body
+// toward a target pose (standing, kneeling, walking gait...).
+// Coordinates: y points down. Rest pose is defined facing right (+x).
+// =====================================================================
 
-// Local contact points with the cow facing right (+x).
-const CONTACTS = [
-  [-74, -34], [74, -34], [74, 32], [-74, 32], [0, -40],   // body
-  [-56, 76], [-34, 76], [34, 76], [56, 76],               // hooves
-  [114, -44], [110, -10], [86, -64], [66, -56],           // head and horns
-  [-92, 10]                                               // tail root
-];
-
-const cow = {
-  x: 0, y: 0, vx: 0, vy: 0, a: 0, w: 0,
-  facing: 1,
-  state: "air",      // air | drag | dazed | getup | stand
-  stateT: 0,
-  restT: 0,
-  grounded: false,
-  walkPhase: 0,
-  walkTarget: 0,
-  walkTimer: 2,
-  blinkT: 3,
-  tailT: 0,
-  bubble: null,
-};
-
-function resetCow() {
-  cow.x = W * 0.5; cow.y = groundY * 0.35;
-  cow.vx = 0; cow.vy = 0; cow.a = 0.9; cow.w = 2;
-  setState("air");
+const P = [];          // particles
+const N = {};          // name -> index
+function addP(name, x, y, mass, r, poseW = 1) {
+  N[name] = P.length;
+  P.push({ name, x: 0, y: 0, px: 0, py: 0, w: 1 / mass, w0: 1 / mass, r,
+           rest: [x, y], kneel: [x, y], poseW, ground: false });
 }
 
-function setState(s) { cow.state = s; cow.stateT = 0; }
+// Torso (rigid box of particles)
+addP("rT", -74, -30, 3, 4);
+addP("mT", 0, -38, 3, 4);
+addP("fT", 72, -32, 3, 4);
+addP("fB", 70, 30, 3, 4);
+addP("mB", 0, 38, 3, 4);
+addP("rB", -72, 30, 3, 4);
+addP("hipBF", -46, 28, 3, 4);
+addP("hipBN", -60, 28, 3, 4);
+addP("hipFF", 60, 28, 3, 4);
+addP("hipFN", 46, 28, 3, 4);
+const TORSO = ["rT", "mT", "fT", "fB", "mB", "rB", "hipBF", "hipBN", "hipFF", "hipFN"];
 
+// Legs: hip -> knee -> hoof. Back legs have the hock behind, front knees ahead.
+const LEGS = [
+  { id: "BF", hip: "hipBF", back: true, near: false, phase: Math.PI },
+  { id: "BN", hip: "hipBN", back: true, near: true, phase: 0 },
+  { id: "FF", hip: "hipFF", back: false, near: false, phase: 0 },
+  { id: "FN", hip: "hipFN", back: false, near: true, phase: Math.PI },
+];
+for (const L of LEGS) {
+  const [hx, hy] = P[N[L.hip]].rest;
+  const kx = L.back ? hx - 6 : hx + 3;
+  addP("knee" + L.id, kx, hy + 25, 1, 6);
+  addP("hoof" + L.id, hx, hy + 52, 1.2, 5);
+  // Kneeling pose: legs folded under the belly
+  const knee = P[N["knee" + L.id]], hoof = P[N["hoof" + L.id]];
+  if (L.back) { knee.kneel = [hx - 22, hy + 13]; hoof.kneel = [hx + 2, hy + 23]; }
+  else        { knee.kneel = [hx + 22, hy + 13]; hoof.kneel = [hx - 2, hy + 23]; }
+  L.knee = "knee" + L.id; L.hoof = "hoof" + L.id;
+  L.upperLen = Math.hypot(knee.rest[0] - hx, knee.rest[1] - hy);
+  L.lowerLen = Math.hypot(hoof.rest[0] - knee.rest[0], hoof.rest[1] - knee.rest[1]);
+}
+
+// Head (rigid triangle) on a neck bone from the front of the torso
+addP("H0", 90, -56, 2, 5);    // back of skull
+addP("H1", 138, -14, 2, 5);   // snout tip
+addP("H2", 114, -2, 2, 5);    // chin
+const HEAD = ["H0", "H1", "H2"];
+
+// Tail chain
+const TAIL = ["t1", "t2", "t3", "t4", "t5"];
+addP("t1", -86, -24, 0.25, 3, 0.35);
+addP("t2", -96, -12, 0.25, 3, 0.35);
+addP("t3", -101, 2, 0.25, 3, 0.35);
+addP("t4", -102, 16, 0.25, 3, 0.35);
+addP("t5", -100, 30, 0.3, 4, 0.35);
+
+// ---------- Constraints ----------
+const dists = [];
+function link(a, b, stiff = 1) {
+  const A = P[N[a]], B = P[N[b]];
+  dists.push({ a: N[a], b: N[b], len: Math.hypot(A.rest[0] - B.rest[0], A.rest[1] - B.rest[1]), stiff });
+}
+for (let i = 0; i < TORSO.length; i++) for (let j = i + 1; j < TORSO.length; j++) link(TORSO[i], TORSO[j]);
+// Body parts are held together by elastic bands: they stretch when pulled and
+// spring back. Torso and skull stay rigid.
+const BAND_LEG = 0.2, BAND_NECK = 0.15, BAND_TAIL = 0.25;
+for (const L of LEGS) { link(L.hip, L.knee, BAND_LEG); link(L.knee, L.hoof, BAND_LEG); }
+link("fT", "H0", BAND_NECK); link("H0", "H1"); link("H1", "H2"); link("H2", "H0");
+link("rT", "t1", BAND_TAIL); link("t1", "t2", BAND_TAIL); link("t2", "t3", BAND_TAIL); link("t3", "t4", BAND_TAIL); link("t4", "t5", BAND_TAIL);
+
+function restAngle(a, b, c, key = "rest") {
+  const A = P[N[a]][key], B = P[N[b]][key], C = P[N[c]][key];
+  return Math.atan2(C[1] - B[1], C[0] - B[0]) - Math.atan2(A[1] - B[1], A[0] - B[0]);
+}
 function normAngle(a) {
   while (a > Math.PI) a -= Math.PI * 2;
   while (a < -Math.PI) a += Math.PI * 2;
   return a;
 }
-
-function toWorld(lx, ly) {
-  const c = Math.cos(cow.a), s = Math.sin(cow.a);
-  return [lx * c - ly * s, lx * s + ly * c];
+const angles = [];
+function joint(a, b, c, lo, hi) {
+  angles.push({ a: N[a], b: N[b], c: N[c], rest: restAngle(a, b, c), lo, hi });
 }
-function toLocal(wx, wy) {
-  const dx = wx - cow.x, dy = wy - cow.y;
-  const c = Math.cos(cow.a), s = Math.sin(cow.a);
-  return [dx * c + dy * s, -dx * s + dy * c];
+// Leg joints: allowed range covers standing, kneeling and some extra swing.
+for (const L of LEGS) {
+  const dHip = normAngle(restAngle("mT", L.hip, L.knee, "kneel") - restAngle("mT", L.hip, L.knee));
+  const dKnee = normAngle(restAngle(L.hip, L.knee, L.hoof, "kneel") - restAngle(L.hip, L.knee, L.hoof));
+  joint("mT", L.hip, L.knee, Math.min(0, dHip) - 0.9, Math.max(0, dHip) + 0.9);
+  joint(L.hip, L.knee, L.hoof, Math.min(0, dKnee) - 0.08, Math.max(0, dKnee) + 0.08);
+}
+joint("mT", "fT", "H0", -0.8, 0.8);
+joint("fT", "H0", "H1", -0.7, 0.7);
+joint("mT", "rT", "t1", -1.0, 1.0);
+joint("rT", "t1", "t2", -0.9, 0.9);
+joint("t1", "t2", "t3", -0.9, 0.9);
+joint("t2", "t3", "t4", -0.9, 0.9);
+joint("t3", "t4", "t5", -0.9, 0.9);
+
+// Rest-pose centroids (unfaced) used for drawing rigid groups
+function restCentroid(names) {
+  let x = 0, y = 0;
+  for (const n of names) { x += P[N[n]].rest[0]; y += P[N[n]].rest[1]; }
+  return [x / names.length, y / names.length];
+}
+const TORSO_RC = restCentroid(TORSO);
+const HEAD_RC = restCentroid(HEAD);
+
+// ---------- Cow state ----------
+const cow = {
+  facing: 1,
+  state: "ragdoll",   // ragdoll | dazed | getup | stand
+  stateT: 0,
+  restT: 0,
+  getupFrom: 0,
+  walkPhase: 0,
+  walkTarget: 0,
+  walkTimer: 2,
+  airT: 0,
+  blinkT: 3,
+  bubble: null,
+  standFrom: 0,
+};
+function setState(s) {
+  if (s === "stand") cow.standFrom = cow.state === "getup" ? poseS : 0;
+  cow.state = s; cow.stateT = 0;
 }
 
-function applyImpulse(rx, ry, jx, jy) {
-  cow.vx += jx / MASS;
-  cow.vy += jy / MASS;
-  cow.w += (rx * jy - ry * jx) / INERTIA;
+function placeCow(cx, cy, angle) {
+  const c = Math.cos(angle), s = Math.sin(angle);
+  for (const p of P) {
+    const lx = p.rest[0] * cow.facing, ly = p.rest[1];
+    p.x = cx + lx * c - ly * s; p.y = cy + lx * s + ly * c;
+    p.px = p.x; p.py = p.y;
+  }
+}
+function resetCow() {
+  cow.facing = 1;
+  placeCow(W * 0.5, groundY * 0.4, 0.9);
+  for (const p of P) { p.px -= 2; p.py += 1; }
+  setState("ragdoll");
+}
+
+// ---------- Helpers ----------
+function centroid(idx, weighted) {
+  let x = 0, y = 0, m = 0;
+  for (const i of idx) { const p = P[i]; const k = weighted ? 1 / p.w0 : 1; x += p.x * k; y += p.y * k; m += k; }
+  return [x / m, y / m];
+}
+const TORSO_I = TORSO.map(n => N[n]);
+const HEAD_I = HEAD.map(n => N[n]);
+const ALL_I = P.map((_, i) => i);
+
+// Best fit rotation of current particle group vs a set of local target points
+function bestFitAngle(idx, local) {
+  const [cx, cy] = centroid(idx, false);
+  let qx0 = 0, qy0 = 0;
+  for (const i of idx) { qx0 += local[i][0]; qy0 += local[i][1]; }
+  qx0 /= idx.length; qy0 /= idx.length;
+  let sCross = 0, sDot = 0;
+  for (const i of idx) {
+    const qx = local[i][0] - qx0, qy = local[i][1] - qy0;
+    const px = P[i].x - cx, py = P[i].y - cy;
+    sCross += qx * py - qy * px; sDot += qx * px + qy * py;
+  }
+  return Math.atan2(sCross, sDot);
+}
+function restLocal() { return P.map(p => [p.rest[0] * cow.facing, p.rest[1]]); }
+function torsoAngle() { return bestFitAngle(TORSO_I, restLocal()); }
+
+// Target pose (local, faced) for muscles: blend of stand and kneel + gait
+function buildPose(backBlend, frontBlend, gaitAmp, gaitPhase) {
+  const pose = P.map(p => [p.rest[0], p.rest[1]]);
+  for (const L of LEGS) {
+    const kb = L.back ? backBlend : frontBlend;   // 1 = standing, 0 = kneeling
+    const hip = P[N[L.hip]].rest;
+    let swing = 0, lift = 0;
+    if (gaitAmp > 0) {
+      const ph = gaitPhase + L.phase;
+      swing = Math.sin(ph) * gaitAmp;
+      lift = Math.max(0, Math.cos(ph)) * Math.min(1, gaitAmp * 1.4);
+    }
+    for (const part of [L.knee, L.hoof]) {
+      const p = P[N[part]];
+      const k = Math.max(0, Math.min(1, kb - lift * 0.5));
+      let x = p.kneel[0] + (p.rest[0] - p.kneel[0]) * k;
+      let y = p.kneel[1] + (p.rest[1] - p.kneel[1]) * k;
+      // rotate the leg around the hip for the gait swing
+      const dx = x - hip[0], dy = y - hip[1];
+      const c = Math.cos(swing), s = Math.sin(swing);
+      pose[N[part]] = [hip[0] + dx * c - dy * s, hip[1] + dx * s + dy * c];
+    }
+  }
+  for (const q of pose) q[0] *= cow.facing;
+  return pose;
 }
 
 // ---------- Input / dragging ----------
-const drag = { active: false, lx: 0, ly: 0, mx: 0, my: 0, id: null };
+const drag = { active: false, i: -1, mx: 0, my: 0, id: null };
 
-function hitTest(px, py) {
-  const [lx0, ly] = toLocal(px, py);
-  const lx = lx0 * cow.facing;
-  if (lx > -95 && lx < 95 && ly > -50 && ly < 80) return true;
-  if (Math.hypot(lx - 92, ly + 30) < 42) return true;
-  return false;
+function pointInPoly(x, y, pts) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i], [xj, yj] = pts[j];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function pickParticle(x, y) {
+  let best = -1, bd = 34;
+  for (let i = 0; i < P.length; i++) {
+    const d = Math.hypot(P[i].x - x, P[i].y - y) - P[i].r;
+    if (d < bd) { bd = d; best = i; }
+  }
+  if (best >= 0) return best;
+  // Inside torso or head shape: grab the nearest particle of that part
+  const hull = ["rT", "mT", "fT", "fB", "mB", "rB"].map(n => [P[N[n]].x, P[N[n]].y]);
+  let group = null;
+  if (pointInPoly(x, y, hull)) group = TORSO_I;
+  else {
+    const [hx, hy] = centroid(HEAD_I, false);
+    if (Math.hypot(hx - x, hy - y) < 45) group = HEAD_I;
+  }
+  if (!group) return -1;
+  bd = Infinity;
+  for (const i of group) { const d = Math.hypot(P[i].x - x, P[i].y - y); if (d < bd) { bd = d; best = i; } }
+  return best;
 }
 
 canvas.addEventListener("pointerdown", (e) => {
   unlockAudio();
-  if (!hitTest(e.clientX, e.clientY)) return;
-  const [lx, ly] = toLocal(e.clientX, e.clientY);
-  drag.active = true; drag.id = e.pointerId;
-  drag.lx = lx; drag.ly = ly; drag.mx = e.clientX; drag.my = e.clientY;
+  const i = pickParticle(e.clientX, e.clientY);
+  if (i < 0) return;
+  drag.active = true; drag.id = e.pointerId; drag.i = i;
+  drag.mx = e.clientX; drag.my = e.clientY;
+  P[i].w = 0;
   canvas.setPointerCapture(e.pointerId);
-  canvas.classList.add("grabbing");
-  setState("drag");
-  if (Math.random() < 0.5) say(["Hoppsan!", "Iiih!", "Muu?!", "Vart ska vi?"][Math.floor(Math.random() * 4)], 1.1);
+  canvas.style.cursor = "grabbing";
+  setState("ragdoll");
+  const n = P[i].name;
+  let lines = ["Hoppsan!", "Iiih!", "Muu?!", "Vart ska vi?"];
+  if (n.startsWith("t")) lines = ["Inte svansen!", "Aj, svansen!", "Muu!!"];
+  else if (n.startsWith("hoof") || n.startsWith("knee")) lines = ["Mitt ben!", "Det kittlas!", "Hallå där!"];
+  else if (n.startsWith("H")) lines = ["Mitt huvud!", "Snurrigt!", "Muuu?"];
+  if (Math.random() < 0.6) say(lines[Math.floor(Math.random() * lines.length)], 1.1);
 });
 canvas.addEventListener("pointermove", (e) => {
   if (drag.active && e.pointerId === drag.id) { drag.mx = e.clientX; drag.my = e.clientY; }
-  else canvas.style.cursor = hitTest(e.clientX, e.clientY) ? "grab" : "default";
+  else canvas.style.cursor = pickParticle(e.clientX, e.clientY) >= 0 ? "grab" : "default";
 });
 function endDrag(e) {
   if (!drag.active || e.pointerId !== drag.id) return;
-  drag.active = false;
-  canvas.classList.remove("grabbing");
-  setState("air");
+  P[drag.i].w = P[drag.i].w0;
+  drag.active = false; drag.i = -1;
+  canvas.style.cursor = "grab";
+  setState("ragdoll");
 }
 canvas.addEventListener("pointerup", endDrag);
 canvas.addEventListener("pointercancel", endDrag);
@@ -198,20 +370,16 @@ function unlockAudio() {
 }
 function moo() {
   if (!audio) return;
-  const t = audio.currentTime;
-  const dur = 1.1;
-  const osc = audio.createOscillator();
-  const osc2 = audio.createOscillator();
-  const filt = audio.createBiquadFilter();
-  const gain = audio.createGain();
+  const t = audio.currentTime, dur = 1.1;
+  const osc = audio.createOscillator(), osc2 = audio.createOscillator();
+  const filt = audio.createBiquadFilter(), gain = audio.createGain();
   osc.type = "sawtooth"; osc2.type = "sawtooth";
   const base = 105 + Math.random() * 25;
-  osc.frequency.setValueAtTime(base * 0.8, t);
-  osc.frequency.linearRampToValueAtTime(base * 1.15, t + 0.25);
-  osc.frequency.linearRampToValueAtTime(base * 0.75, t + dur);
-  osc2.frequency.setValueAtTime(base * 0.802, t);
-  osc2.frequency.linearRampToValueAtTime(base * 1.152, t + 0.25);
-  osc2.frequency.linearRampToValueAtTime(base * 0.752, t + dur);
+  for (const [o, d] of [[osc, 1], [osc2, 1.003]]) {
+    o.frequency.setValueAtTime(base * 0.8 * d, t);
+    o.frequency.linearRampToValueAtTime(base * 1.15 * d, t + 0.25);
+    o.frequency.linearRampToValueAtTime(base * 0.75 * d, t + dur);
+  }
   filt.type = "lowpass";
   filt.frequency.setValueAtTime(300, t);
   filt.frequency.linearRampToValueAtTime(1100, t + 0.3);
@@ -224,163 +392,334 @@ function moo() {
   osc.connect(filt); osc2.connect(filt); filt.connect(gain); gain.connect(audio.destination);
   osc.start(t); osc2.start(t); osc.stop(t + dur + 0.05); osc2.stop(t + dur + 0.05);
 }
-
 function say(text, time = 1.6) { cow.bubble = { text, t: time }; }
 
-// ---------- Physics step ----------
-function step(dt) {
-  const st = cow.state;
-  cow.stateT += dt;
+// ---------- Physics ----------
+const G = 2200;
+const SUB = 1 / 180;
+const ITER = 10;
 
-  // Forces
-  cow.vy += G * dt;
-
-  if (st === "drag") {
-    const [rx, ry] = toWorld(drag.lx, drag.ly);
-    const ax = cow.x + rx, ay = cow.y + ry;
-    const pvx = cow.vx - cow.w * ry, pvy = cow.vy + cow.w * rx;
-    const tx = Math.max(10, Math.min(W - 10, drag.mx));
-    const ty = Math.max(10, Math.min(groundY + 20, drag.my));
-    const k = 260, c = 22;
-    const fx = k * (tx - ax) - c * pvx;
-    const fy = k * (ty - ay) - c * pvy;
-    applyImpulse(rx, ry, fx * dt, fy * dt);
-    cow.w *= Math.exp(-1.5 * dt);
-  }
-
-  // Active righting torque (the cow "uses her muscles")
-  if (st === "getup") {
-    cow.w += (-55 * normAngle(cow.a) - 12 * cow.w) * dt;
-  } else if (st === "stand") {
-    cow.w += (-120 * normAngle(cow.a) - 22 * cow.w) * dt;
-    if (cow.grounded) {
-      cow.vx += (cow.walkTarget - cow.vx) * Math.min(1, dt * 5);
+function solveDistance(c) {
+  const A = P[c.a], B = P[c.b];
+  const wsum = A.w + B.w;
+  if (wsum === 0) return;
+  const dx = B.x - A.x, dy = B.y - A.y;
+  const d = Math.hypot(dx, dy) || 1e-6;
+  const diff = (d - c.len) / d * c.stiff;
+  A.x += dx * diff * A.w / wsum; A.y += dy * diff * A.w / wsum;
+  B.x -= dx * diff * B.w / wsum; B.y -= dy * diff * B.w / wsum;
+}
+function rotateAround(p, bx, by, ang) {
+  const c = Math.cos(ang), s = Math.sin(ang);
+  const dx = p.x - bx, dy = p.y - by;
+  p.x = bx + dx * c - dy * s; p.y = by + dx * s + dy * c;
+}
+function solveAngle(j) {
+  const A = P[j.a], B = P[j.b], C = P[j.c];
+  const wsum = A.w + C.w;
+  if (wsum === 0) return;
+  const ang = Math.atan2(C.y - B.y, C.x - B.x) - Math.atan2(A.y - B.y, A.x - B.x);
+  const dev = normAngle(ang * cow.facing - j.rest);
+  let err = 0;
+  if (dev < j.lo) err = dev - j.lo; else if (dev > j.hi) err = dev - j.hi;
+  if (err === 0) return;
+  // gentle correction so a badly twisted joint never whips around
+  err = Math.max(-0.06, Math.min(0.06, err));
+  const E = err * cow.facing;
+  const tri = [A, B, C];
+  const pinned = A.w === 0 || B.w === 0 || C.w === 0;
+  const old = tri.map(q => [q.x, q.y]);
+  rotateAround(A, B.x, B.y, E * A.w / wsum);
+  rotateAround(C, B.x, B.y, -E * C.w / wsum);
+  if (pinned) {
+    // Held by the pointer: the hand may push, but a joint must not add spin
+    // around the held point. Cancel angular momentum about that point.
+    const pin = tri.find(q => q.w === 0);
+    let L = 0, I = 0;
+    for (let i = 0; i < 3; i++) {
+      const q = tri[i];
+      if (q.w === 0) continue;
+      const k = 1 / q.w;
+      const rx = old[i][0] - pin.x, ry = old[i][1] - pin.y;
+      L += k * (rx * (q.y - old[i][1]) - ry * (q.x - old[i][0]));
+      I += k * ((q.x - pin.x) ** 2 + (q.y - pin.y) ** 2);
     }
+    if (I > 0) for (const q of tri) if (q.w !== 0) rotateAround(q, pin.x, pin.y, -L / I);
+    return;
   }
-
-  // Air drag
-  cow.vx *= Math.exp(-0.08 * dt);
-  cow.vy *= Math.exp(-0.08 * dt);
-
-  // Integrate
-  cow.x += cow.vx * dt;
-  cow.y += cow.vy * dt;
-  cow.a = normAngle(cow.a + cow.w * dt);
-
-  // Collisions against ground, walls and ceiling
-  const planes = [
-    { nx: 0, ny: -1, d: groundY, ground: true },   // y <= groundY
-    { nx: 1, ny: 0, d: 0 },                         // x >= 0
-    { nx: -1, ny: 0, d: W },                        // x <= W
-    { nx: 0, ny: 1, d: -60 },                       // y >= -60 (a bit above screen)
-  ];
-  const restitution = st === "stand" ? 0.0 : 0.28;
-  const mu = 0.7;
-  let grounded = false;
-  let impactSpeed = 0;
-
-  for (let iter = 0; iter < 3; iter++) {
-    for (const p of planes) {
-      let maxPen = 0;
-      for (const [lx0, ly] of CONTACTS) {
-        const [rx, ry] = toWorld(lx0 * cow.facing, ly);
-        const px = cow.x + rx, py = cow.y + ry;
-        // signed distance to plane (positive = inside play area)
-        const dist = p.ground ? (p.d - py) : (p.nx !== 0 ? (p.nx > 0 ? px - p.d : p.d - px) : py - p.d);
-        if (dist >= 0) continue;
-        maxPen = Math.max(maxPen, -dist);
-        if (p.ground) grounded = true;
-        const vpx = cow.vx - cow.w * ry, vpy = cow.vy + cow.w * rx;
-        const vn = vpx * p.nx + vpy * p.ny;
-        if (vn < 0) {
-          if (iter === 0 && p.ground) impactSpeed = Math.max(impactSpeed, -vn);
-          const rn = rx * p.ny - ry * p.nx;
-          const jn = -(1 + (iter === 0 ? restitution : 0)) * vn / (1 / MASS + rn * rn / INERTIA);
-          applyImpulse(rx, ry, jn * p.nx, jn * p.ny);
-          // friction
-          const tx = -p.ny, ty = p.nx;
-          const vpx2 = cow.vx - cow.w * ry, vpy2 = cow.vy + cow.w * rx;
-          const vt = vpx2 * tx + vpy2 * ty;
-          const rt = rx * ty - ry * tx;
-          let jt = -vt / (1 / MASS + rt * rt / INERTIA);
-          const maxF = mu * jn;
-          jt = Math.max(-maxF, Math.min(maxF, jt));
-          applyImpulse(rx, ry, jt * tx, jt * ty);
-        }
-      }
-      if (maxPen > 0) {
-        cow.x += p.nx * maxPen * 0.9;
-        cow.y += p.ny * maxPen * 0.9;
-      }
-    }
+  // A joint is an internal force: it must change neither the centre of mass
+  // nor the angular momentum of the three particles. Undo both.
+  let ox = 0, oy = 0, nx = 0, ny = 0, m = 0;
+  for (let i = 0; i < 3; i++) {
+    const k = 1 / tri[i].w;
+    ox += old[i][0] * k; oy += old[i][1] * k; nx += tri[i].x * k; ny += tri[i].y * k; m += k;
   }
-  if (grounded && st !== "stand") cow.w *= Math.exp(-2 * dt);
-  cow.grounded = grounded;
-
-  if (impactSpeed > 900 && (st === "air" || st === "getup")) spawnDust(cow.x, groundY, Math.min(14, impactSpeed / 120));
-
-  updateBrain(dt);
+  ox /= m; oy /= m; nx /= m; ny /= m;
+  let L = 0, I = 0;
+  for (let i = 0; i < 3; i++) {
+    const q = tri[i], k = 1 / q.w;
+    q.x -= nx - ox; q.y -= ny - oy;
+    const rx = old[i][0] - ox, ry = old[i][1] - oy;
+    L += k * (rx * (q.y - old[i][1]) - ry * (q.x - old[i][0]));
+    I += k * ((q.x - ox) ** 2 + (q.y - oy) ** 2);
+  }
+  if (I > 0) for (const q of tri) rotateAround(q, ox, oy, -L / I);
 }
 
-// ---------- Behaviour state machine ----------
-function updateBrain(dt) {
-  const speed = Math.hypot(cow.vx, cow.vy);
-  const tilt = Math.abs(normAngle(cow.a));
-  const calm = cow.grounded && speed < 60 && Math.abs(cow.w) < 1.2;
+// In 2D a body held together only by distances can be turned inside out
+// (mirrored) when yanked hard. Detect it and make the model agree again.
+function chirality(a, b, c, d) {
+  const A = P[N[a]], B = P[N[b]], C = P[N[c]], D = P[N[d]];
+  return Math.sign((B.x - A.x) * (D.y - C.y) - (B.y - A.y) * (D.x - C.x));
+}
+function fixMirroring() {
+  // torso: the whole cow simply faces the other way now
+  if (chirality("rT", "fT", "mT", "mB") !== cow.facing) cow.facing *= -1;
+  // skull: reflect the chin across the skull->snout line
+  if (chirality("H0", "H1", "H0", "H2") !== cow.facing) {
+    const A = P[N.H0], B = P[N.H1];
+    for (const q of [P[N.H2]]) {
+      const dx = B.x - A.x, dy = B.y - A.y, l2 = dx * dx + dy * dy;
+      for (const k of [["x", "y"], ["px", "py"]]) {
+        const rx = q[k[0]] - A.x, ry = q[k[1]] - A.y;
+        const t = (rx * dx + ry * dy) / l2;
+        q[k[0]] = A.x + 2 * t * dx - rx; q[k[1]] = A.y + 2 * t * dy - ry;
+      }
+    }
+  }
+}
 
-  switch (cow.state) {
-    case "air":
-      cow.restT = calm ? cow.restT + dt : 0;
-      if (cow.restT > 0.2) {
-        cow.restT = 0;
-        if (tilt < 0.3) { setState("stand"); landedUpright(false); }
-        else { setState("dazed"); }
+// Joint damping: brakes the difference in spin between the two bones of a
+// joint (internal friction) but leaves free rotation of the whole body alone.
+function dampJoint(j, k) {
+  const A = P[j.a], B = P[j.b], C = P[j.c];
+  if (A.w === 0 || C.w === 0) return;
+  const vbx = B.x - B.px, vby = B.y - B.py;
+  const ax = A.x - B.x, ay = A.y - B.y, cx = C.x - B.x, cy = C.y - B.y;
+  const la = ax * ax + ay * ay, lc = cx * cx + cy * cy;
+  if (la < 1 || lc < 1) return;
+  const wa = (ax * (A.y - A.py - vby) - ay * (A.x - A.px - vbx)) / la;
+  const wc = (cx * (C.y - C.py - vby) - cy * (C.x - C.px - vbx)) / lc;
+  // Equal and opposite angular impulse J on the two bones (no net spin)
+  const J = k * (wc - wa) / (A.w / la + C.w / lc);
+  const dwa = J * A.w / la, dwc = -J * C.w / lc;
+  const dax = -ay * dwa, day = ax * dwa, dcx = -cy * dwc, dcy = cx * dwc;
+  A.px -= dax; A.py -= day; C.px -= dcx; C.py -= dcy;
+  // and the joint itself takes the recoil, so no net push either
+  if (B.w > 0) {
+    const mx = dax / A.w + dcx / C.w, my = day / A.w + dcy / C.w;
+    B.px += mx * B.w; B.py += my * B.w;
+  }
+}
+
+// Muscles: pull every particle toward the target pose placed at the current
+// centroid with orientation `angle`. Being centroid based, it conserves linear
+// momentum, so standing up needs the ground to push back.
+function solvePose(pose, angle, s) {
+  if (s <= 0) return;
+  let cx = 0, cy = 0, m = 0, qx = 0, qy = 0;
+  for (let i = 0; i < P.length; i++) {
+    const k = 1 / P[i].w0;
+    cx += P[i].x * k; cy += P[i].y * k; qx += pose[i][0] * k; qy += pose[i][1] * k; m += k;
+  }
+  cx /= m; cy /= m; qx /= m; qy /= m;
+  const c = Math.cos(angle), sn = Math.sin(angle);
+  for (let i = 0; i < P.length; i++) {
+    const p = P[i];
+    if (p.w === 0) continue;
+    const lx = pose[i][0] - qx, ly = pose[i][1] - qy;
+    const tx = cx + lx * c - ly * sn, ty = cy + lx * sn + ly * c;
+    const k = s * p.poseW;
+    p.x += (tx - p.x) * k; p.y += (ty - p.y) * k;
+  }
+}
+
+function collide(p) {
+  let hit = false;
+  const gy = groundY - p.r;
+  if (p.y > gy) { p.y = gy; p.ground = true; hit = true; }
+  if (p.x < p.r) { p.x = p.r; hit = true; }
+  if (p.x > W - p.r) { p.x = W - p.r; hit = true; }
+  if (p.y < p.r) { p.y = p.r; hit = true; }
+  return hit;
+}
+
+let pose = null, poseAngle = 0, poseS = 0;
+
+function substep(dt) {
+  // Air resistance: mild on the whole body, stronger on spinning and
+  // flailing (motion relative to the centre of mass), so falls stay fast.
+  let mvx = 0, mvy = 0, mm = 0;
+  for (const p of P) { const k = 1 / p.w0; mvx += (p.x - p.px) * k; mvy += (p.y - p.py) * k; mm += k; }
+  mvx /= mm; mvy /= mm;
+  const spinDrag = 0.994;
+
+  // Integrate (Verlet)
+  for (const p of P) {
+    p.ground = false;
+    if (p.w === 0) { p.px = p.x; p.py = p.y; continue; }
+    let vx = (mvx + (p.x - p.px - mvx) * spinDrag) * 0.999;
+    let vy = (mvy + (p.y - p.py - mvy) * spinDrag) * 0.999;
+    const v = Math.hypot(vx, vy), vmax = 45;
+    if (v > vmax) { vx *= vmax / v; vy *= vmax / v; }
+    p.px = p.x; p.py = p.y;
+    p.x += vx; p.y += vy + G * dt * dt;
+  }
+
+  // Walking push in the stand state
+  if (cow.state === "stand" && Math.abs(cow.walkTarget) > 1) {
+    for (const i of TORSO_I) {
+      const p = P[i];
+      const vx = (p.x - p.px) / dt;
+      p.x += (cow.walkTarget - vx) * dt * 0.08;
+    }
+  }
+
+  // Dragged particle follows the pointer exactly
+  if (drag.active) {
+    const p = P[drag.i];
+    const tx = Math.max(p.r, Math.min(W - p.r, drag.mx));
+    const ty = Math.min(groundY - p.r, drag.my);
+    p.x = tx; p.y = ty;
+  }
+
+  for (const j of angles) dampJoint(j, 0.12);
+
+  for (let it = 0; it < ITER; it++) {
+    for (const c of dists) solveDistance(c);
+    for (const j of angles) solveAngle(j);
+    solvePose(pose, poseAngle, poseS);
+    for (const p of P) collide(p);
+  }
+
+  fixMirroring();
+
+  // Ground friction
+  for (const p of P) {
+    if (p.ground && p.w > 0) {
+      const f = cow.state === "stand" ? 0.35 : 0.25;
+      p.x -= (p.x - p.px) * f;
+    }
+  }
+}
+
+// ---------- Behaviour ----------
+const ease = (t) => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+const range = (t, a, b) => ease((t - a) / (b - a));
+
+function hoovesDown() {
+  let n = 0;
+  for (const L of LEGS) if (P[N[L.hoof]].y > groundY - P[N[L.hoof]].r - 3) n++;
+  return n;
+}
+function maxSpeed() {
+  let m = 0;
+  for (const i of TORSO_I) { const p = P[i]; m = Math.max(m, Math.hypot(p.x - p.px, p.y - p.py) / SUB); }
+  return m;
+}
+function anyGround() { return P.some(p => p.ground); }
+
+function think(dt) {
+  cow.stateT += dt;
+  const st = cow.state;
+  const ta = torsoAngle();
+  const grounded = anyGround();
+  const calm = grounded && maxSpeed() < 70;
+
+  switch (st) {
+    case "ragdoll": {
+      // completely limp: only gravity, bones and joint limits act on the body
+      const held = drag.active;
+      pose = buildPose(1, 1, 0, 0);
+      poseAngle = ta;
+      poseS = 0;
+      if (!held) {
+        cow.restT = calm ? cow.restT + dt : 0;
+        if (cow.restT > 0.25) {
+          cow.restT = 0;
+          // Landed roughly on the feet: skip the dizzy part and just get up
+          if (Math.abs(ta) < 0.5 && hoovesDown() >= 2) { setState("getup"); cow.getupFrom = ta; }
+          else setState("dazed");
+        }
       }
       break;
+    }
     case "dazed":
-      if (!calm && cow.stateT > 0.1 && speed > 250) { setState("air"); break; }
-      if (cow.stateT > 0.7) {
-        // Hop and twist back onto the feet
+      pose = buildPose(1, 1, 0, 0); poseAngle = ta; poseS = 0;
+      if (!calm && maxSpeed() > 300) { setState("ragdoll"); break; }
+      if (cow.stateT > 0.8) {
         setState("getup");
-        cow.vy = -820;
-        cow.vx *= 0.3;
-        cow.w += -normAngle(cow.a) * 1.5;
+        cow.getupFrom = ta;
+        // Lying on the back or deep on the side: kick and throw the body around
+        if (Math.abs(ta) > 1.0) {
+          cow.tries = (cow.tries || 0) + 1;
+          const dir = Math.abs(ta) > 2.8 ? (Math.random() < 0.5 ? -1 : 1) : -Math.sign(ta);
+          if (Math.abs(ta) > 2.8) cow.getupFrom = -dir * Math.abs(ta);
+          kick(0, -520 - 60 * Math.min(cow.tries, 4), dir * (4.5 + 0.6 * Math.min(cow.tries, 4)));
+        }
         if (Math.random() < 0.6) say(["Hepp!", "Upp med dig!", "Hoppla!"][Math.floor(Math.random() * 3)], 0.9);
       }
       break;
-    case "getup":
-      cow.restT = calm ? cow.restT + dt : 0;
-      if (cow.grounded && cow.stateT > 0.15 && tilt < 0.35) {
-        cow.restT = 0;
-        setState("stand");
-        landedUpright(true);
-      } else if (cow.restT > 0.25 || cow.stateT > 3) {
-        cow.restT = 0;
-        setState("dazed"); // try again
+    case "getup": {
+      // 1) roll upright with legs folded, 2) back legs up, 3) front legs up
+      const t = cow.stateT;
+      const roll = range(t, 0, 0.6);
+      const back = range(t, 0.7, 1.05);
+      const front = range(t, 0.9, 1.35);
+      pose = buildPose(back, front, 0, 0);
+      poseAngle = cow.getupFrom * (1 - roll) + cow.facing * 0.28 * (back - front);
+      poseS = 0.02 + 0.05 * range(t, 0, 0.35);
+      if (t > 1.45) {
+        if (Math.abs(ta) < 0.45 && hoovesDown() >= 2) { setState("stand"); landed(true); }
+        else { setState("dazed"); }
       }
       break;
-    case "stand":
-      if (tilt > 0.75 || (!cow.grounded && cow.stateT > 0.3 && Math.abs(cow.vy) > 300)) { setState("air"); break; }
+    }
+    case "stand": {
       cow.walkTimer -= dt;
       if (cow.walkTimer <= 0) {
-        const r = Math.random();
-        if (r < 0.4) cow.walkTarget = 0;
-        else {
-          const dir = Math.random() < 0.5 ? -1 : 1;
-          cow.walkTarget = dir * (40 + Math.random() * 50);
-        }
+        if (Math.random() < 0.4) cow.walkTarget = 0;
+        else cow.walkTarget = (Math.random() < 0.5 ? -1 : 1) * (35 + Math.random() * 35);
         cow.walkTimer = 1.5 + Math.random() * 3;
         if (Math.random() < 0.15) { say("Muu", 1.3); moo(); }
       }
-      // Turn around near the walls
-      if (cow.x < 140 && cow.walkTarget < 0) cow.walkTarget = -cow.walkTarget;
-      if (cow.x > W - 140 && cow.walkTarget > 0) cow.walkTarget = -cow.walkTarget;
-      if (Math.abs(cow.walkTarget) > 5) cow.facing = Math.sign(cow.walkTarget);
+      const [cx] = centroid(TORSO_I, false);
+      if (cx < 150 && cow.walkTarget < 0) cow.walkTarget = -cow.walkTarget;
+      if (cx > W - 150 && cow.walkTarget > 0) cow.walkTarget = -cow.walkTarget;
+      // Turn around to face the walking direction
+      if (Math.abs(cow.walkTarget) > 1 && Math.sign(cow.walkTarget) !== cow.facing) turnAround();
+      const walking = Math.abs(cow.walkTarget) > 1;
+      if (walking) cow.walkPhase += dt * Math.abs(cow.walkTarget) * 0.11;
+      pose = buildPose(1, 1, walking ? 0.28 : 0, cow.walkPhase);
+      poseAngle = 0;
+      // ease the muscles in so a crumpled landing does not launch the cow
+      poseS = cow.standFrom + (0.06 - cow.standFrom) * range(cow.stateT, 0, 0.6);
+      cow.airT = hoovesDown() === 0 ? cow.airT + dt : 0;
+      if (Math.abs(ta) > 0.9 || cow.airT > 0.35) setState("ragdoll");
       break;
+    }
   }
 }
 
-function landedUpright(afterGetup) {
+// Add a velocity (px/s) and spin (rad/s) to the whole body
+function kick(vx, vy, omega) {
+  const [cx, cy] = centroid(ALL_I, true);
+  for (const p of P) {
+    if (p.w === 0) continue;
+    const rx = p.x - cx, ry = p.y - cy;
+    const ux = vx - omega * ry, uy = vy + omega * rx;
+    p.px -= ux * SUB; p.py -= uy * SUB;
+  }
+}
+
+function turnAround() {
+  const [cx] = centroid(ALL_I, true);
+  for (const p of P) { p.x = 2 * cx - p.x; p.px = 2 * cx - p.px; }
+  cow.facing *= -1;
+}
+
+function landed(afterGetup) {
+  cow.tries = 0;
   cow.walkTarget = 0;
   cow.walkTimer = 1.2 + Math.random() * 1.5;
   if (afterGetup || Math.random() < 0.5) {
@@ -389,31 +728,29 @@ function landedUpright(afterGetup) {
   }
 }
 
-// ---------- Particles ----------
+// ---------- Particles (dust) ----------
 const dust = [];
-function spawnDust(x, y, n) {
+function spawnDust(x, n) {
   for (let i = 0; i < n; i++) {
-    dust.push({ x: x + (Math.random() - 0.5) * 140, y, vx: (Math.random() - 0.5) * 260, vy: -Math.random() * 180, life: 0.6 + Math.random() * 0.4, t: 0, r: 6 + Math.random() * 10 });
+    dust.push({ x: x + (Math.random() - 0.5) * 120, y: groundY, vx: (Math.random() - 0.5) * 240, vy: -Math.random() * 160, life: 0.6 + Math.random() * 0.4, t: 0, r: 6 + Math.random() * 10 });
   }
 }
 
 // ---------- Drawing ----------
-function drawBackground(time) {
+function drawBackground() {
   const sky = ctx.createLinearGradient(0, 0, 0, groundY);
   sky.addColorStop(0, "#7cc6ef");
   sky.addColorStop(1, "#d4f0fb");
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, W, groundY + 2);
 
-  // sun
   ctx.fillStyle = "rgba(255, 236, 140, 0.9)";
   ctx.beginPath(); ctx.arc(W - 110, 110, 46, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "rgba(255, 236, 140, 0.25)";
   ctx.beginPath(); ctx.arc(W - 110, 110, 72, 0, Math.PI * 2); ctx.fill();
 
-  // clouds
   for (const c of clouds) {
-    c.x += c.v * (1 / 60);
+    c.x += c.v / 60;
     if (c.x - 120 * c.s > W) c.x = -120 * c.s;
     ctx.fillStyle = "rgba(255,255,255,0.92)";
     ctx.beginPath();
@@ -423,23 +760,18 @@ function drawBackground(time) {
     ctx.fill();
   }
 
-  // hills
   ctx.fillStyle = "#9fd67a";
   ctx.beginPath();
   ctx.moveTo(0, groundY);
   for (let x = 0; x <= W; x += 20) ctx.lineTo(x, groundY - 60 - Math.sin(x * 0.006) * 40 - Math.sin(x * 0.013 + 1) * 18);
   ctx.lineTo(W, groundY); ctx.closePath(); ctx.fill();
 
-  // fence
   ctx.strokeStyle = "#b88a5a"; ctx.lineWidth = 6; ctx.lineCap = "round";
-  for (let x = 30; x < W; x += 90) {
-    ctx.beginPath(); ctx.moveTo(x, groundY + 2); ctx.lineTo(x, groundY - 58); ctx.stroke();
-  }
+  for (let x = 30; x < W; x += 90) { ctx.beginPath(); ctx.moveTo(x, groundY + 2); ctx.lineTo(x, groundY - 58); ctx.stroke(); }
   ctx.lineWidth = 5;
   ctx.beginPath(); ctx.moveTo(0, groundY - 44); ctx.lineTo(W, groundY - 44); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(0, groundY - 22); ctx.lineTo(W, groundY - 22); ctx.stroke();
 
-  // ground
   const g = ctx.createLinearGradient(0, groundY, 0, H);
   g.addColorStop(0, "#6cbf4a");
   g.addColorStop(1, "#4f9a35");
@@ -447,23 +779,7 @@ function drawBackground(time) {
   ctx.fillRect(0, groundY, W, H - groundY);
   ctx.fillStyle = "#7fd05a";
   ctx.fillRect(0, groundY, W, 5);
-
-  for (const f of flowers) {
-    ctx.fillStyle = f.c;
-    ctx.beginPath(); ctx.arc(f.x, f.y, 3.2, 0, Math.PI * 2); ctx.fill();
-  }
-}
-
-function drawLeg(hx, hy, angle, len, front) {
-  ctx.save();
-  ctx.translate(hx, hy);
-  ctx.rotate(angle);
-  ctx.fillStyle = front ? "#fffaf2" : "#eee5d8";
-  ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 3;
-  roundRect(-9, -4, 18, len, 7); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = "#3a2e28";
-  roundRect(-10, len - 12, 20, 13, 4); ctx.fill();
-  ctx.restore();
+  for (const f of flowers) { ctx.fillStyle = f.c; ctx.beginPath(); ctx.arc(f.x, f.y, 3.2, 0, Math.PI * 2); ctx.fill(); }
 }
 
 function roundRect(x, y, w, h, r) {
@@ -476,53 +792,88 @@ function roundRect(x, y, w, h, r) {
   ctx.closePath();
 }
 
-function drawCow(time) {
-  const st = cow.state;
-  ctx.save();
-  // shadow
-  const shadowW = 90 * Math.max(0.3, 1 - Math.max(0, groundY - cow.y - 60) / 500);
-  ctx.fillStyle = "rgba(0,0,0,0.15)";
-  ctx.beginPath(); ctx.ellipse(cow.x, groundY + 4, shadowW, 10, 0, 0, Math.PI * 2); ctx.fill();
-
-  ctx.translate(cow.x, cow.y);
-  ctx.rotate(cow.a);
+// Transform the canvas into the local (unfaced rest) frame of a rigid group
+function enterGroupFrame(idx, restC) {
+  const ang = bestFitAngle(idx, restLocal());
+  const [cx, cy] = centroid(idx, false);
+  ctx.translate(cx, cy);
+  ctx.rotate(ang);
   ctx.scale(cow.facing, 1);
+  ctx.translate(-restC[0], -restC[1]);
+}
 
-  // Leg animation
-  let swing = 0, flail = 0;
-  if (st === "stand") swing = Math.sin(cow.walkPhase) * Math.min(1, Math.abs(cow.vx) / 60) * 0.35;
-  if (st === "drag" || st === "air" || st === "getup") flail = Math.sin(time * 14) * 0.35;
-  const dazed = st === "dazed";
-
-  const legLen = 46;
-  const legs = [[-56, 30, -1, false], [34, 30, 1, false], [-34, 30, 1, true], [56, 30, -1, true]];
-  for (const [lx, ly, dir, front] of legs) {
-    let ang = swing * dir + flail * dir;
-    if (dazed) ang = dir * 0.25 + Math.sin(time * 3 + lx) * 0.05;
-    drawLeg(lx, ly, ang, legLen, front);
+function capsule(ax, ay, bx, by, w, fill, rest) {
+  if (rest) {
+    // rubber: keep the volume, so a stretched limb gets thinner
+    const d = Math.hypot(bx - ax, by - ay) || 1;
+    w *= Math.max(0.45, Math.min(1.25, Math.sqrt(rest / d)));
   }
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "#2b2420"; ctx.lineWidth = w + 6;
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  ctx.strokeStyle = fill; ctx.lineWidth = w;
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+}
 
-  // tail
-  cow.tailT += 0.05;
-  const tailSw = Math.sin(time * 3) * 0.3 + (st === "drag" ? Math.sin(time * 12) * 0.4 : 0);
-  ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(-74, -18);
-  ctx.quadraticCurveTo(-98, -10 + tailSw * 20, -96 + tailSw * 18, 26);
-  ctx.stroke();
+function drawLeg(L) {
+  const h = P[N[L.hip]], k = P[N[L.knee]], f = P[N[L.hoof]];
+  const fill = L.near ? "#fffaf2" : "#e9dfd1";
+  capsule(h.x, h.y, k.x, k.y, L.back ? 20 : 17, fill, L.upperLen);
+  capsule(k.x, k.y, f.x, f.y, 14, fill, L.lowerLen);
+  // joint cap so the outline does not cut through the knee
+  ctx.fillStyle = fill;
+  ctx.beginPath(); ctx.arc(k.x, k.y, 7, 0, Math.PI * 2); ctx.fill();
+  if (!L.near) { // spot on far legs for variety
+    ctx.fillStyle = "#2b2420";
+    ctx.beginPath(); ctx.arc((h.x + k.x) / 2, (h.y + k.y) / 2, 5, 0, Math.PI * 2); ctx.fill();
+  }
+  // hoof
+  const ang = Math.atan2(f.y - k.y, f.x - k.x);
+  ctx.save();
+  ctx.translate(f.x, f.y); ctx.rotate(ang - Math.PI / 2);
   ctx.fillStyle = "#3a2e28";
-  ctx.beginPath(); ctx.ellipse(-96 + tailSw * 18, 30, 6, 9, tailSw, 0, Math.PI * 2); ctx.fill();
+  roundRect(-10, -6, 20, 12, 4); ctx.fill();
+  ctx.restore();
+  // highlight the grabbed joint
+  if (drag.active && (drag.i === N[L.knee] || drag.i === N[L.hoof] || drag.i === N[L.hip])) {
+    const p = P[drag.i];
+    ctx.strokeStyle = "rgba(255,120,150,0.8)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 13, 0, Math.PI * 2); ctx.stroke();
+  }
+}
 
+function drawTail(time) {
+  const pts = [P[N.rT], ...TAIL.map(n => P[N[n]])];
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const mx = (pts[i].x + pts[i + 1].x) / 2, my = (pts[i].y + pts[i + 1].y) / 2;
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+  }
+  const last = pts[pts.length - 1];
+  ctx.lineTo(last.x, last.y);
+  ctx.stroke();
+  const prev = pts[pts.length - 2];
+  const a = Math.atan2(last.y - prev.y, last.x - prev.x);
+  ctx.fillStyle = "#3a2e28";
+  ctx.beginPath(); ctx.ellipse(last.x + Math.cos(a) * 4, last.y + Math.sin(a) * 4, 10, 6, a, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawTorso() {
+  ctx.save();
+  enterGroupFrame(TORSO_I, TORSO_RC);
   // udder
   ctx.fillStyle = "#ffb3c7"; ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.ellipse(12, 34, 20, 12, 0, 0, Math.PI); ctx.fill(); ctx.stroke();
-
+  ctx.beginPath(); ctx.ellipse(10, 34, 20, 13, 0, 0, Math.PI); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#ffb3c7";
+  for (const tx of [-2, 10, 22]) { ctx.beginPath(); ctx.ellipse(tx, 47, 3, 4, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
   // body
   ctx.fillStyle = "#fffaf2";
-  roundRect(-80, -40, 160, 78, 36); ctx.fill();
-  // spots (clipped)
+  roundRect(-80, -40, 160, 76, 36); ctx.fill();
   ctx.save();
-  roundRect(-80, -40, 160, 78, 36); ctx.clip();
+  roundRect(-80, -40, 160, 76, 36); ctx.clip();
   ctx.fillStyle = "#2b2420";
   ctx.beginPath(); ctx.ellipse(-40, -22, 26, 18, 0.4, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.ellipse(20, 10, 22, 16, -0.3, 0, Math.PI * 2); ctx.fill();
@@ -530,25 +881,40 @@ function drawCow(time) {
   ctx.beginPath(); ctx.ellipse(60, -32, 18, 12, 0.2, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
   ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 3.5;
-  roundRect(-80, -40, 160, 78, 36); ctx.stroke();
+  roundRect(-80, -40, 160, 76, 36); ctx.stroke();
+  ctx.restore();
+}
 
-  // head
+function drawNeck() {
+  const a = P[N.fT];
+  const [hx, hy] = centroid(HEAD_I, false);
+  // start the neck slightly inside the body
+  const [tcx, tcy] = centroid(TORSO_I, false);
+  const sx = a.x + (tcx - a.x) * 0.18, sy = a.y + (tcy - a.y) * 0.18;
+  const ex = P[N.H0].x * 0.6 + hx * 0.4, ey = P[N.H0].y * 0.6 + hy * 0.4;
+  capsule(sx, sy, ex, ey, 34, "#fffaf2");
+}
+
+function drawHead(time) {
+  const st = cow.state;
+  const dazed = st === "dazed";
+  const scared = drag.active || (st === "ragdoll" && !anyGround());
   ctx.save();
-  const nod = st === "stand" ? Math.sin(time * 2) * 0.04 : 0;
-  ctx.translate(82, -26);
-  ctx.rotate(nod);
+  enterGroupFrame(HEAD_I, HEAD_RC);
+  ctx.translate(96, -32);
+  ctx.lineJoin = "round";
   // horns
   ctx.fillStyle = "#f3e2b8"; ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(-6, -26); ctx.quadraticCurveTo(-14, -46, -2, -42); ctx.lineTo(4, -28); ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(14, -26); ctx.quadraticCurveTo(22, -46, 30, -36); ctx.lineTo(22, -24); ctx.closePath(); ctx.fill(); ctx.stroke();
-  // ears
+  // ear (flops a little)
+  const flop = st === "stand" ? Math.sin(time * 6) * 0.08 : 0;
   ctx.fillStyle = "#fffaf2";
-  ctx.beginPath(); ctx.ellipse(-16, -16, 14, 7, -0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(-16, -16, 14, 7, -0.5 + flop, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   // skull
-  ctx.fillStyle = "#fffaf2";
   ctx.beginPath(); ctx.ellipse(10, -4, 28, 26, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   ctx.fillStyle = "#2b2420";
-  ctx.beginPath(); ctx.ellipse(0, -18, 10, 8, 0.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-8, -20, 9, 7, 0.5, 0, Math.PI * 2); ctx.fill();
   // snout
   ctx.fillStyle = "#ffb3c7";
   ctx.beginPath(); ctx.ellipse(22, 14, 22, 15, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
@@ -557,41 +923,43 @@ function drawCow(time) {
   ctx.beginPath(); ctx.ellipse(30, 12, 3, 4, 0, 0, Math.PI * 2); ctx.fill();
   // mouth
   ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 2.5;
-  if (st === "drag" || st === "air") {
+  if (scared) {
     ctx.fillStyle = "#7a2f45";
     ctx.beginPath(); ctx.ellipse(23, 22, 5, 4, 0, 0, Math.PI * 2); ctx.fill();
   } else {
     ctx.beginPath(); ctx.arc(23, 18, 6, 0.2, Math.PI - 0.2); ctx.stroke();
   }
-  // eye
-  cow.blinkT -= 1 / 60;
-  if (cow.blinkT < -0.12) cow.blinkT = 2 + Math.random() * 3;
-  if (dazed) {
-    ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(14, -12); ctx.lineTo(24, -2); ctx.moveTo(24, -12); ctx.lineTo(14, -2); ctx.stroke();
-  } else if (cow.blinkT < 0 && st === "stand") {
-    ctx.beginPath(); ctx.moveTo(13, -6); ctx.lineTo(25, -6); ctx.stroke();
-  } else {
-    const big = st === "drag" || st === "air";
-    ctx.fillStyle = "#fff";
-    ctx.beginPath(); ctx.arc(19, -7, big ? 9 : 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = "#2b2420";
-    ctx.beginPath(); ctx.arc(20, -6, big ? 3 : 4, 0, Math.PI * 2); ctx.fill();
-  }
-  // blush
+  // two eyes (three-quarter view), the far one slightly smaller
+  for (const [ex, ey, sc] of [[6, -8, 0.9], [26, -9, 1]]) drawEye(ex, ey, sc, dazed, scared);
   ctx.fillStyle = "rgba(255,120,150,0.35)";
-  ctx.beginPath(); ctx.ellipse(2, 6, 7, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-4, 6, 6, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(36, 4, 5, 3.5, 0, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 
-  ctx.restore();
-
-  // dizzy stars around the head (world space)
   if (dazed) {
-    const [hx, hy] = toWorld(92 * cow.facing, -40);
+    const hx = P[N.H0].x, hy = P[N.H0].y;
     for (let i = 0; i < 3; i++) {
       const ang = time * 4 + i * (Math.PI * 2 / 3);
-      drawStar(cow.x + hx + Math.cos(ang) * 30, cow.y + hy - 20 + Math.sin(ang) * 10, 7);
+      drawStar(hx + Math.cos(ang) * 30, hy - 22 + Math.sin(ang) * 10, 7);
     }
+  }
+}
+
+function drawEye(x, y, sc, dazed, scared) {
+  ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 2.5;
+  if (dazed) {
+    const r = 5 * sc;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x - r, y - r); ctx.lineTo(x + r, y + r); ctx.moveTo(x + r, y - r); ctx.lineTo(x - r, y + r); ctx.stroke();
+  } else if (cow.blinkT < 0 && cow.state === "stand") {
+    ctx.beginPath(); ctx.moveTo(x - 6 * sc, y + 1); ctx.lineTo(x + 6 * sc, y + 1); ctx.stroke();
+  } else {
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(x, y, (scared ? 8.5 : 7) * sc, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#2b2420";
+    ctx.beginPath(); ctx.arc(x + 1.5, y + 1, (scared ? 2.8 : 3.8) * sc, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(x + 2.5, y - 0.5, 1.2 * sc, 0, Math.PI * 2); ctx.fill();
   }
 }
 
@@ -606,18 +974,38 @@ function drawStar(x, y, r) {
   ctx.closePath(); ctx.fill(); ctx.stroke();
 }
 
+function drawCow(time) {
+  // shadow
+  const [cx, cy] = centroid(TORSO_I, false);
+  const shadowW = 90 * Math.max(0.3, 1 - Math.max(0, groundY - cy - 60) / 500);
+  ctx.fillStyle = "rgba(0,0,0,0.15)";
+  ctx.beginPath(); ctx.ellipse(cx, groundY + 4, shadowW, 10, 0, 0, Math.PI * 2); ctx.fill();
+
+  for (const L of LEGS) if (!L.near) drawLeg(L);
+  drawTail(time);
+  drawNeck();
+  drawTorso();
+  for (const L of LEGS) if (L.near) drawLeg(L);
+  drawHead(time);
+
+  if (drag.active) {
+    const p = P[drag.i];
+    ctx.strokeStyle = "rgba(255,120,150,0.85)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 12, 0, Math.PI * 2); ctx.stroke();
+  }
+}
+
 function drawBubble() {
   const b = cow.bubble;
   if (!b) return;
+  const [hx, hy] = centroid(HEAD_I, false);
   ctx.save();
   ctx.globalAlpha = Math.min(1, b.t * 3);
   ctx.font = "bold 20px 'Trebuchet MS', system-ui, sans-serif";
   const tw = ctx.measureText(b.text).width;
   const bw = tw + 28, bh = 38;
-  let bx = cow.x - bw / 2 + cow.facing * 60;
-  let by = cow.y - 150;
-  bx = Math.max(8, Math.min(W - bw - 8, bx));
-  by = Math.max(8, by);
+  let bx = Math.max(8, Math.min(W - bw - 8, hx - bw / 2));
+  let by = Math.max(8, hy - 110);
   ctx.fillStyle = "#fff"; ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 3;
   roundRect(bx, by, bw, bh, 14); ctx.fill(); ctx.stroke();
   ctx.fillStyle = "#2b2420";
@@ -642,41 +1030,47 @@ function drawDust(dt) {
 // ---------- Main loop ----------
 let last = performance.now();
 let acc = 0;
-const FIXED = 1 / 240;
+let wasHighSpeedFall = false;
 
 function frame(now) {
-  let dt = Math.min(0.05, (now - last) / 1000);
+  const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   acc += dt;
-  while (acc >= FIXED) { step(FIXED); acc -= FIXED; }
 
-  if (cow.state === "stand") cow.walkPhase += Math.abs(cow.vx) * dt * 0.12;
+  think(dt);
+
+  // dust when the torso slams into the ground
+  const [tcx, tcy] = centroid(TORSO_I, false);
+  const torsoVy = TORSO_I.reduce((s, i) => s + (P[i].y - P[i].py), 0) / TORSO_I.length / SUB;
+  if (torsoVy > 900) wasHighSpeedFall = true;
+  while (acc >= SUB) { substep(SUB); acc -= SUB; }
+  if (wasHighSpeedFall && anyGround()) { spawnDust(tcx, 10); wasHighSpeedFall = false; }
+
+  cow.blinkT -= dt;
+  if (cow.blinkT < -0.12) cow.blinkT = 2 + Math.random() * 3;
   if (cow.bubble) { cow.bubble.t -= dt; if (cow.bubble.t <= 0) cow.bubble = null; }
 
-  // Recover if the cow somehow leaves the world
-  if (!isFinite(cow.x) || !isFinite(cow.y) || cow.y > H + 200) resetCow();
+  // Recover if something went wrong
+  if (P.some(p => !isFinite(p.x) || !isFinite(p.y))) resetCow();
 
   const time = now / 1000;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  drawBackground(time);
+  drawBackground();
   drawDust(dt);
   drawCow(time);
   drawBubble();
   requestAnimationFrame(frame);
 }
 
-window.addEventListener("resize", () => {
-  resize();
-  cow.x = Math.max(100, Math.min(W - 100, cow.x));
-  if (cow.y > groundY) cow.y = groundY - 80;
-});
+window.addEventListener("resize", resize);
 
 resize();
 resetCow();
+pose = buildPose(1, 1, 0, 0);
 requestAnimationFrame(frame);
 
-// Small hook for automated tests
-window.__cow = cow;
+// Hook for automated tests
+window.__cow = { cow, P, N, drag, torsoAngle, hoovesDown, angles, dists, normAngle, placeCow, setState, get poseS() { return poseS; } };
 </script>
 </body>
 </html>
