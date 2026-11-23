@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Kossan Rosa</title>
+<style>
+  :root {
+    --ink: #2b2420;
+    --muted: rgba(43, 36, 32, 0.55);
+  }
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #9fd8f5;
+    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    color: var(--ink);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    touch-action: none;
+    cursor: grab;
+  }
+  canvas.grabbing { cursor: grabbing; }
+  .hud {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    pointer-events: none;
+  }
+  .hud h1 {
+    margin: 0;
+    font-size: clamp(22px, 4vw, 34px);
+    letter-spacing: 0.5px;
+    text-shadow: 0 2px 0 rgba(255,255,255,0.6);
+  }
+  .hud p {
+    margin: 4px 0 0;
+    font-size: 15px;
+    color: var(--muted);
+  }
+  .version {
+    position: fixed;
+    right: 12px;
+    bottom: 8px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.75);
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <h1>Kossan Rosa</h1>
+  <p>Dra i kon och släpp. Hon ställer sig upp igen.</p>
+</div>
+<div class="version" id="version"></div>
+
+<script>
+const VERSION = "v1.0.0";
+document.getElementById("version").textContent = VERSION;
+
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+let W = 0, H = 0, DPR = 1, groundY = 0;
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  groundY = H - Math.max(70, H * 0.16);
+  buildScenery();
+}
+
+// ---------- Scenery ----------
+let clouds = [], flowers = [];
+function buildScenery() {
+  clouds = [];
+  const n = Math.ceil(W / 260) + 1;
+  for (let i = 0; i < n; i++) {
+    clouds.push({ x: Math.random() * W, y: 60 + Math.random() * (groundY * 0.35), s: 0.6 + Math.random() * 0.7, v: 6 + Math.random() * 10 });
+  }
+  flowers = [];
+  for (let x = 10; x < W; x += 22 + Math.random() * 40) {
+    flowers.push({ x, y: groundY + 12 + Math.random() * (H - groundY - 24), c: ["#fff", "#ffd84d", "#ff9ec7"][Math.floor(Math.random() * 3)] });
+  }
+}
+
+// ---------- Cow body (rigid body, y axis points down) ----------
+const G = 2200;              // gravity px/s^2
+const MASS = 1;
+const INERTIA = MASS * (170 * 170 + 110 * 110) / 12;
+
+// Local contact points with the cow facing right (+x).
+const CONTACTS = [
+  [-74, -34], [74, -34], [74, 32], [-74, 32], [0, -40],   // body
+  [-56, 76], [-34, 76], [34, 76], [56, 76],               // hooves
+  [114, -44], [110, -10], [86, -64], [66, -56],           // head and horns
+  [-92, 10]                                               // tail root
+];
+
+const cow = {
+  x: 0, y: 0, vx: 0, vy: 0, a: 0, w: 0,
+  facing: 1,
+  state: "air",      // air | drag | dazed | getup | stand
+  stateT: 0,
+  restT: 0,
+  grounded: false,
+  walkPhase: 0,
+  walkTarget: 0,
+  walkTimer: 2,
+  blinkT: 3,
+  tailT: 0,
+  bubble: null,
+};
+
+function resetCow() {
+  cow.x = W * 0.5; cow.y = groundY * 0.35;
+  cow.vx = 0; cow.vy = 0; cow.a = 0.9; cow.w = 2;
+  setState("air");
+}
+
+function setState(s) { cow.state = s; cow.stateT = 0; }
+
+function normAngle(a) {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
+function toWorld(lx, ly) {
+  const c = Math.cos(cow.a), s = Math.sin(cow.a);
+  return [lx * c - ly * s, lx * s + ly * c];
+}
+function toLocal(wx, wy) {
+  const dx = wx - cow.x, dy = wy - cow.y;
+  const c = Math.cos(cow.a), s = Math.sin(cow.a);
+  return [dx * c + dy * s, -dx * s + dy * c];
+}
+
+function applyImpulse(rx, ry, jx, jy) {
+  cow.vx += jx / MASS;
+  cow.vy += jy / MASS;
+  cow.w += (rx * jy - ry * jx) / INERTIA;
+}
+
+// ---------- Input / dragging ----------
+const drag = { active: false, lx: 0, ly: 0, mx: 0, my: 0, id: null };
+
+function hitTest(px, py) {
+  const [lx0, ly] = toLocal(px, py);
+  const lx = lx0 * cow.facing;
+  if (lx > -95 && lx < 95 && ly > -50 && ly < 80) return true;
+  if (Math.hypot(lx - 92, ly + 30) < 42) return true;
+  return false;
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+  unlockAudio();
+  if (!hitTest(e.clientX, e.clientY)) return;
+  const [lx, ly] = toLocal(e.clientX, e.clientY);
+  drag.active = true; drag.id = e.pointerId;
+  drag.lx = lx; drag.ly = ly; drag.mx = e.clientX; drag.my = e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+  canvas.classList.add("grabbing");
+  setState("drag");
+  if (Math.random() < 0.5) say(["Hoppsan!", "Iiih!", "Muu?!", "Vart ska vi?"][Math.floor(Math.random() * 4)], 1.1);
+});
+canvas.addEventListener("pointermove", (e) => {
+  if (drag.active && e.pointerId === drag.id) { drag.mx = e.clientX; drag.my = e.clientY; }
+  else canvas.style.cursor = hitTest(e.clientX, e.clientY) ? "grab" : "default";
+});
+function endDrag(e) {
+  if (!drag.active || e.pointerId !== drag.id) return;
+  drag.active = false;
+  canvas.classList.remove("grabbing");
+  setState("air");
+}
+canvas.addEventListener("pointerup", endDrag);
+canvas.addEventListener("pointercancel", endDrag);
+
+// ---------- Sound: synthesized moo ----------
+let audio = null;
+function unlockAudio() {
+  if (!audio) {
+    try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { audio = null; }
+  }
+  if (audio && audio.state === "suspended") audio.resume();
+}
+function moo() {
+  if (!audio) return;
+  const t = audio.currentTime;
+  const dur = 1.1;
+  const osc = audio.createOscillator();
+  const osc2 = audio.createOscillator();
+  const filt = audio.createBiquadFilter();
+  const gain = audio.createGain();
+  osc.type = "sawtooth"; osc2.type = "sawtooth";
+  const base = 105 + Math.random() * 25;
+  osc.frequency.setValueAtTime(base * 0.8, t);
+  osc.frequency.linearRampToValueAtTime(base * 1.15, t + 0.25);
+  osc.frequency.linearRampToValueAtTime(base * 0.75, t + dur);
+  osc2.frequency.setValueAtTime(base * 0.802, t);
+  osc2.frequency.linearRampToValueAtTime(base * 1.152, t + 0.25);
+  osc2.frequency.linearRampToValueAtTime(base * 0.752, t + dur);
+  filt.type = "lowpass";
+  filt.frequency.setValueAtTime(300, t);
+  filt.frequency.linearRampToValueAtTime(1100, t + 0.3);
+  filt.frequency.linearRampToValueAtTime(350, t + dur);
+  filt.Q.value = 4;
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.18, t + 0.12);
+  gain.gain.setValueAtTime(0.18, t + dur * 0.6);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.connect(filt); osc2.connect(filt); filt.connect(gain); gain.connect(audio.destination);
+  osc.start(t); osc2.start(t); osc.stop(t + dur + 0.05); osc2.stop(t + dur + 0.05);
+}
+
+function say(text, time = 1.6) { cow.bubble = { text, t: time }; }
+
+// ---------- Physics step ----------
+function step(dt) {
+  const st = cow.state;
+  cow.stateT += dt;
+
+  // Forces
+  cow.vy += G * dt;
+
+  if (st === "drag") {
+    const [rx, ry] = toWorld(drag.lx, drag.ly);
+    const ax = cow.x + rx, ay = cow.y + ry;
+    const pvx = cow.vx - cow.w * ry, pvy = cow.vy + cow.w * rx;
+    const tx = Math.max(10, Math.min(W - 10, drag.mx));
+    const ty = Math.max(10, Math.min(groundY + 20, drag.my));
+    const k = 260, c = 22;
+    const fx = k * (tx - ax) - c * pvx;
+    const fy = k * (ty - ay) - c * pvy;
+    applyImpulse(rx, ry, fx * dt, fy * dt);
+    cow.w *= Math.exp(-1.5 * dt);
+  }
+
+  // Active righting torque (the cow "uses her muscles")
+  if (st === "getup") {
+    cow.w += (-55 * normAngle(cow.a) - 12 * cow.w) * dt;
+  } else if (st === "stand") {
+    cow.w += (-120 * normAngle(cow.a) - 22 * cow.w) * dt;
+    if (cow.grounded) {
+      cow.vx += (cow.walkTarget - cow.vx) * Math.min(1, dt * 5);
+    }
+  }
+
+  // Air drag
+  cow.vx *= Math.exp(-0.08 * dt);
+  cow.vy *= Math.exp(-0.08 * dt);
+
+  // Integrate
+  cow.x += cow.vx * dt;
+  cow.y += cow.vy * dt;
+  cow.a = normAngle(cow.a + cow.w * dt);
+
+  // Collisions against ground, walls and ceiling
+  const planes = [
+    { nx: 0, ny: -1, d: groundY, ground: true },   // y <= groundY
+    { nx: 1, ny: 0, d: 0 },                         // x >= 0
+    { nx: -1, ny: 0, d: W },                        // x <= W
+    { nx: 0, ny: 1, d: -60 },                       // y >= -60 (a bit above screen)
+  ];
+  const restitution = st === "stand" ? 0.0 : 0.28;
+  const mu = 0.7;
+  let grounded = false;
+  let impactSpeed = 0;
+
+  for (let iter = 0; iter < 3; iter++) {
+    for (const p of planes) {
+      let maxPen = 0;
+      for (const [lx0, ly] of CONTACTS) {
+        const [rx, ry] = toWorld(lx0 * cow.facing, ly);
+        const px = cow.x + rx, py = cow.y + ry;
+        // signed distance to plane (positive = inside play area)
+        const dist = p.ground ? (p.d - py) : (p.nx !== 0 ? (p.nx > 0 ? px - p.d : p.d - px) : py - p.d);
+        if (dist >= 0) continue;
+        maxPen = Math.max(maxPen, -dist);
+        if (p.ground) grounded = true;
+        const vpx = cow.vx - cow.w * ry, vpy = cow.vy + cow.w * rx;
+        const vn = vpx * p.nx + vpy * p.ny;
+        if (vn < 0) {
+          if (iter === 0 && p.ground) impactSpeed = Math.max(impactSpeed, -vn);
+          const rn = rx * p.ny - ry * p.nx;
+          const jn = -(1 + (iter === 0 ? restitution : 0)) * vn / (1 / MASS + rn * rn / INERTIA);
+          applyImpulse(rx, ry, jn * p.nx, jn * p.ny);
+          // friction
+          const tx = -p.ny, ty = p.nx;
+          const vpx2 = cow.vx - cow.w * ry, vpy2 = cow.vy + cow.w * rx;
+          const vt = vpx2 * tx + vpy2 * ty;
+          const rt = rx * ty - ry * tx;
+          let jt = -vt / (1 / MASS + rt * rt / INERTIA);
+          const maxF = mu * jn;
+          jt = Math.max(-maxF, Math.min(maxF, jt));
+          applyImpulse(rx, ry, jt * tx, jt * ty);
+        }
+      }
+      if (maxPen > 0) {
+        cow.x += p.nx * maxPen * 0.9;
+        cow.y += p.ny * maxPen * 0.9;
+      }
+    }
+  }
+  if (grounded && st !== "stand") cow.w *= Math.exp(-2 * dt);
+  cow.grounded = grounded;
+
+  if (impactSpeed > 900 && (st === "air" || st === "getup")) spawnDust(cow.x, groundY, Math.min(14, impactSpeed / 120));
+
+  updateBrain(dt);
+}
+
+// ---------- Behaviour state machine ----------
+function updateBrain(dt) {
+  const speed = Math.hypot(cow.vx, cow.vy);
+  const tilt = Math.abs(normAngle(cow.a));
+  const calm = cow.grounded && speed < 60 && Math.abs(cow.w) < 1.2;
+
+  switch (cow.state) {
+    case "air":
+      cow.restT = calm ? cow.restT + dt : 0;
+      if (cow.restT > 0.2) {
+        cow.restT = 0;
+        if (tilt < 0.3) { setState("stand"); landedUpright(false); }
+        else { setState("dazed"); }
+      }
+      break;
+    case "dazed":
+      if (!calm && cow.stateT > 0.1 && speed > 250) { setState("air"); break; }
+      if (cow.stateT > 0.7) {
+        // Hop and twist back onto the feet
+        setState("getup");
+        cow.vy = -820;
+        cow.vx *= 0.3;
+        cow.w += -normAngle(cow.a) * 1.5;
+        if (Math.random() < 0.6) say(["Hepp!", "Upp med dig!", "Hoppla!"][Math.floor(Math.random() * 3)], 0.9);
+      }
+      break;
+    case "getup":
+      cow.restT = calm ? cow.restT + dt : 0;
+      if (cow.grounded && cow.stateT > 0.15 && tilt < 0.35) {
+        cow.restT = 0;
+        setState("stand");
+        landedUpright(true);
+      } else if (cow.restT > 0.25 || cow.stateT > 3) {
+        cow.restT = 0;
+        setState("dazed"); // try again
+      }
+      break;
+    case "stand":
+      if (tilt > 0.75 || (!cow.grounded && cow.stateT > 0.3 && Math.abs(cow.vy) > 300)) { setState("air"); break; }
+      cow.walkTimer -= dt;
+      if (cow.walkTimer <= 0) {
+        const r = Math.random();
+        if (r < 0.4) cow.walkTarget = 0;
+        else {
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          cow.walkTarget = dir * (40 + Math.random() * 50);
+        }
+        cow.walkTimer = 1.5 + Math.random() * 3;
+        if (Math.random() < 0.15) { say("Muu", 1.3); moo(); }
+      }
+      // Turn around near the walls
+      if (cow.x < 140 && cow.walkTarget < 0) cow.walkTarget = -cow.walkTarget;
+      if (cow.x > W - 140 && cow.walkTarget > 0) cow.walkTarget = -cow.walkTarget;
+      if (Math.abs(cow.walkTarget) > 5) cow.facing = Math.sign(cow.walkTarget);
+      break;
+  }
+}
+
+function landedUpright(afterGetup) {
+  cow.walkTarget = 0;
+  cow.walkTimer = 1.2 + Math.random() * 1.5;
+  if (afterGetup || Math.random() < 0.5) {
+    say(["MUUU!", "Muu!", "Tadaa!", "Muuuu."][Math.floor(Math.random() * 4)], 1.6);
+    moo();
+  }
+}
+
+// ---------- Particles ----------
+const dust = [];
+function spawnDust(x, y, n) {
+  for (let i = 0; i < n; i++) {
+    dust.push({ x: x + (Math.random() - 0.5) * 140, y, vx: (Math.random() - 0.5) * 260, vy: -Math.random() * 180, life: 0.6 + Math.random() * 0.4, t: 0, r: 6 + Math.random() * 10 });
+  }
+}
+
+// ---------- Drawing ----------
+function drawBackground(time) {
+  const sky = ctx.createLinearGradient(0, 0, 0, groundY);
+  sky.addColorStop(0, "#7cc6ef");
+  sky.addColorStop(1, "#d4f0fb");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, groundY + 2);
+
+  // sun
+  ctx.fillStyle = "rgba(255, 236, 140, 0.9)";
+  ctx.beginPath(); ctx.arc(W - 110, 110, 46, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(255, 236, 140, 0.25)";
+  ctx.beginPath(); ctx.arc(W - 110, 110, 72, 0, Math.PI * 2); ctx.fill();
+
+  // clouds
+  for (const c of clouds) {
+    c.x += c.v * (1 / 60);
+    if (c.x - 120 * c.s > W) c.x = -120 * c.s;
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y, 60 * c.s, 24 * c.s, 0, 0, Math.PI * 2);
+    ctx.ellipse(c.x - 40 * c.s, c.y + 6 * c.s, 38 * c.s, 18 * c.s, 0, 0, Math.PI * 2);
+    ctx.ellipse(c.x + 35 * c.s, c.y - 10 * c.s, 40 * c.s, 24 * c.s, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // hills
+  ctx.fillStyle = "#9fd67a";
+  ctx.beginPath();
+  ctx.moveTo(0, groundY);
+  for (let x = 0; x <= W; x += 20) ctx.lineTo(x, groundY - 60 - Math.sin(x * 0.006) * 40 - Math.sin(x * 0.013 + 1) * 18);
+  ctx.lineTo(W, groundY); ctx.closePath(); ctx.fill();
+
+  // fence
+  ctx.strokeStyle = "#b88a5a"; ctx.lineWidth = 6; ctx.lineCap = "round";
+  for (let x = 30; x < W; x += 90) {
+    ctx.beginPath(); ctx.moveTo(x, groundY + 2); ctx.lineTo(x, groundY - 58); ctx.stroke();
+  }
+  ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(0, groundY - 44); ctx.lineTo(W, groundY - 44); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, groundY - 22); ctx.lineTo(W, groundY - 22); ctx.stroke();
+
+  // ground
+  const g = ctx.createLinearGradient(0, groundY, 0, H);
+  g.addColorStop(0, "#6cbf4a");
+  g.addColorStop(1, "#4f9a35");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, groundY, W, H - groundY);
+  ctx.fillStyle = "#7fd05a";
+  ctx.fillRect(0, groundY, W, 5);
+
+  for (const f of flowers) {
+    ctx.fillStyle = f.c;
+    ctx.beginPath(); ctx.arc(f.x, f.y, 3.2, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawLeg(hx, hy, angle, len, front) {
+  ctx.save();
+  ctx.translate(hx, hy);
+  ctx.rotate(angle);
+  ctx.fillStyle = front ? "#fffaf2" : "#eee5d8";
+  ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 3;
+  roundRect(-9, -4, 18, len, 7); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#3a2e28";
+  roundRect(-10, len - 12, 20, 13, 4); ctx.fill();
+  ctx.restore();
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawCow(time) {
+  const st = cow.state;
+  ctx.save();
+  // shadow
+  const shadowW = 90 * Math.max(0.3, 1 - Math.max(0, groundY - cow.y - 60) / 500);
+  ctx.fillStyle = "rgba(0,0,0,0.15)";
+  ctx.beginPath(); ctx.ellipse(cow.x, groundY + 4, shadowW, 10, 0, 0, Math.PI * 2); ctx.fill();
+
+  ctx.translate(cow.x, cow.y);
+  ctx.rotate(cow.a);
+  ctx.scale(cow.facing, 1);
+
+  // Leg animation
+  let swing = 0, flail = 0;
+  if (st === "stand") swing = Math.sin(cow.walkPhase) * Math.min(1, Math.abs(cow.vx) / 60) * 0.35;
+  if (st === "drag" || st === "air" || st === "getup") flail = Math.sin(time * 14) * 0.35;
+  const dazed = st === "dazed";
+
+  const legLen = 46;
+  const legs = [[-56, 30, -1, false], [34, 30, 1, false], [-34, 30, 1, true], [56, 30, -1, true]];
+  for (const [lx, ly, dir, front] of legs) {
+    let ang = swing * dir + flail * dir;
+    if (dazed) ang = dir * 0.25 + Math.sin(time * 3 + lx) * 0.05;
+    drawLeg(lx, ly, ang, legLen, front);
+  }
+
+  // tail
+  cow.tailT += 0.05;
+  const tailSw = Math.sin(time * 3) * 0.3 + (st === "drag" ? Math.sin(time * 12) * 0.4 : 0);
+  ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(-74, -18);
+  ctx.quadraticCurveTo(-98, -10 + tailSw * 20, -96 + tailSw * 18, 26);
+  ctx.stroke();
+  ctx.fillStyle = "#3a2e28";
+  ctx.beginPath(); ctx.ellipse(-96 + tailSw * 18, 30, 6, 9, tailSw, 0, Math.PI * 2); ctx.fill();
+
+  // udder
+  ctx.fillStyle = "#ffb3c7"; ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.ellipse(12, 34, 20, 12, 0, 0, Math.PI); ctx.fill(); ctx.stroke();
+
+  // body
+  ctx.fillStyle = "#fffaf2";
+  roundRect(-80, -40, 160, 78, 36); ctx.fill();
+  // spots (clipped)
+  ctx.save();
+  roundRect(-80, -40, 160, 78, 36); ctx.clip();
+  ctx.fillStyle = "#2b2420";
+  ctx.beginPath(); ctx.ellipse(-40, -22, 26, 18, 0.4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(20, 10, 22, 16, -0.3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-64, 22, 16, 14, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(60, -32, 18, 12, 0.2, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 3.5;
+  roundRect(-80, -40, 160, 78, 36); ctx.stroke();
+
+  // head
+  ctx.save();
+  const nod = st === "stand" ? Math.sin(time * 2) * 0.04 : 0;
+  ctx.translate(82, -26);
+  ctx.rotate(nod);
+  // horns
+  ctx.fillStyle = "#f3e2b8"; ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-6, -26); ctx.quadraticCurveTo(-14, -46, -2, -42); ctx.lineTo(4, -28); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(14, -26); ctx.quadraticCurveTo(22, -46, 30, -36); ctx.lineTo(22, -24); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // ears
+  ctx.fillStyle = "#fffaf2";
+  ctx.beginPath(); ctx.ellipse(-16, -16, 14, 7, -0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  // skull
+  ctx.fillStyle = "#fffaf2";
+  ctx.beginPath(); ctx.ellipse(10, -4, 28, 26, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#2b2420";
+  ctx.beginPath(); ctx.ellipse(0, -18, 10, 8, 0.5, 0, Math.PI * 2); ctx.fill();
+  // snout
+  ctx.fillStyle = "#ffb3c7";
+  ctx.beginPath(); ctx.ellipse(22, 14, 22, 15, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#c46a85";
+  ctx.beginPath(); ctx.ellipse(16, 12, 3, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(30, 12, 3, 4, 0, 0, Math.PI * 2); ctx.fill();
+  // mouth
+  ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 2.5;
+  if (st === "drag" || st === "air") {
+    ctx.fillStyle = "#7a2f45";
+    ctx.beginPath(); ctx.ellipse(23, 22, 5, 4, 0, 0, Math.PI * 2); ctx.fill();
+  } else {
+    ctx.beginPath(); ctx.arc(23, 18, 6, 0.2, Math.PI - 0.2); ctx.stroke();
+  }
+  // eye
+  cow.blinkT -= 1 / 60;
+  if (cow.blinkT < -0.12) cow.blinkT = 2 + Math.random() * 3;
+  if (dazed) {
+    ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(14, -12); ctx.lineTo(24, -2); ctx.moveTo(24, -12); ctx.lineTo(14, -2); ctx.stroke();
+  } else if (cow.blinkT < 0 && st === "stand") {
+    ctx.beginPath(); ctx.moveTo(13, -6); ctx.lineTo(25, -6); ctx.stroke();
+  } else {
+    const big = st === "drag" || st === "air";
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(19, -7, big ? 9 : 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#2b2420";
+    ctx.beginPath(); ctx.arc(20, -6, big ? 3 : 4, 0, Math.PI * 2); ctx.fill();
+  }
+  // blush
+  ctx.fillStyle = "rgba(255,120,150,0.35)";
+  ctx.beginPath(); ctx.ellipse(2, 6, 7, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  ctx.restore();
+
+  // dizzy stars around the head (world space)
+  if (dazed) {
+    const [hx, hy] = toWorld(92 * cow.facing, -40);
+    for (let i = 0; i < 3; i++) {
+      const ang = time * 4 + i * (Math.PI * 2 / 3);
+      drawStar(cow.x + hx + Math.cos(ang) * 30, cow.y + hy - 20 + Math.sin(ang) * 10, 7);
+    }
+  }
+}
+
+function drawStar(x, y, r) {
+  ctx.fillStyle = "#ffd84d"; ctx.strokeStyle = "#b8901a"; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const rr = i % 2 ? r * 0.45 : r;
+    const a = -Math.PI / 2 + i * Math.PI / 5;
+    ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+  }
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+}
+
+function drawBubble() {
+  const b = cow.bubble;
+  if (!b) return;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, b.t * 3);
+  ctx.font = "bold 20px 'Trebuchet MS', system-ui, sans-serif";
+  const tw = ctx.measureText(b.text).width;
+  const bw = tw + 28, bh = 38;
+  let bx = cow.x - bw / 2 + cow.facing * 60;
+  let by = cow.y - 150;
+  bx = Math.max(8, Math.min(W - bw - 8, bx));
+  by = Math.max(8, by);
+  ctx.fillStyle = "#fff"; ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 3;
+  roundRect(bx, by, bw, bh, 14); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#2b2420";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(b.text, bx + bw / 2, by + bh / 2 + 1);
+  ctx.restore();
+}
+
+function drawDust(dt) {
+  for (let i = dust.length - 1; i >= 0; i--) {
+    const d = dust[i];
+    d.t += dt;
+    if (d.t > d.life) { dust.splice(i, 1); continue; }
+    d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 300 * dt;
+    if (d.y > groundY) d.y = groundY;
+    const k = 1 - d.t / d.life;
+    ctx.fillStyle = `rgba(210, 190, 150, ${0.6 * k})`;
+    ctx.beginPath(); ctx.arc(d.x, d.y, d.r * (1.4 - k * 0.4), 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// ---------- Main loop ----------
+let last = performance.now();
+let acc = 0;
+const FIXED = 1 / 240;
+
+function frame(now) {
+  let dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  acc += dt;
+  while (acc >= FIXED) { step(FIXED); acc -= FIXED; }
+
+  if (cow.state === "stand") cow.walkPhase += Math.abs(cow.vx) * dt * 0.12;
+  if (cow.bubble) { cow.bubble.t -= dt; if (cow.bubble.t <= 0) cow.bubble = null; }
+
+  // Recover if the cow somehow leaves the world
+  if (!isFinite(cow.x) || !isFinite(cow.y) || cow.y > H + 200) resetCow();
+
+  const time = now / 1000;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  drawBackground(time);
+  drawDust(dt);
+  drawCow(time);
+  drawBubble();
+  requestAnimationFrame(frame);
+}
+
+window.addEventListener("resize", () => {
+  resize();
+  cow.x = Math.max(100, Math.min(W - 100, cow.x));
+  if (cow.y > groundY) cow.y = groundY - 80;
+});
+
+resize();
+resetCow();
+requestAnimationFrame(frame);
+
+// Small hook for automated tests
+window.__cow = cow;
+</script>
+</body>
+</html>
